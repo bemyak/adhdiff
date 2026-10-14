@@ -1,0 +1,14 @@
+{
+  "name": "adhdiff",
+  "owner": {
+    "name": "bemyak"
+  },
+  "plugins": [
+    {
+      "name": "adhdiff",
+      "source": "./",
+      "description": "Priority-tiered, agent-annotated diff review: an agent labels every hunk with a priority tier, the reviewer reads what matters first.",
+      "license": "GPL-3.0-or-later"
+    }
+  ]
+}

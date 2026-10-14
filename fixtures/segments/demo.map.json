@@ -1,0 +1,69 @@
+{
+  "title": "Segment-tiled fixture: generated registry with hand-written lookup core",
+  "summary": "A generated 133-entry registry plus aliases, a hand-written binary-search lookup that all callers funnel through, a config-parse hardening that skips malformed lines, and release notes. Exercises sub-hunk tiling: the 180-line new-file hunk splits into three segments.",
+  "diff_sha256": "17557b74ec2ad9e2dae430affd90d9f78bbfd924a559f3200bad08343e0064b2",
+  "hunks": [
+    {
+      "file": "src/big.rs",
+      "row_start": 146,
+      "row_end": 163,
+      "priority": "P1",
+      "label": "hand-written lookup: binary search plus bucket check",
+      "rationale": "every registry access funnels through this walk; the bucket guard decides hit vs miss",
+      "mechanical": false,
+      "confidence": "high"
+    },
+    {
+      "file": "src/big.rs",
+      "row_start": 6,
+      "row_end": 145,
+      "priority": "P5",
+      "label": "generated registry rows (head)",
+      "rationale": "",
+      "mechanical": true,
+      "confidence": "high",
+      "supports": 146
+    },
+    {
+      "file": "src/big.rs",
+      "row_start": 164,
+      "row_end": 185,
+      "priority": "P5",
+      "label": "generated alias rows (tail)",
+      "rationale": "",
+      "mechanical": true,
+      "confidence": "high",
+      "supports": 146
+    },
+    {
+      "file": "src/lib.rs",
+      "row_start": 190,
+      "row_end": 197,
+      "priority": "P2",
+      "label": "skip malformed config lines instead of panicking",
+      "rationale": "",
+      "mechanical": false,
+      "confidence": "high"
+    },
+    {
+      "file": "src/lib.rs",
+      "row_start": 198,
+      "row_end": 200,
+      "priority": "P4",
+      "label": "unchanged set/return tail",
+      "rationale": "",
+      "mechanical": false,
+      "confidence": "high"
+    },
+    {
+      "file": "docs/CHANGELOG.md",
+      "row_start": 205,
+      "row_end": 209,
+      "priority": "P4",
+      "label": "release notes heading",
+      "rationale": "",
+      "mechanical": false,
+      "confidence": "high"
+    }
+  ]
+}

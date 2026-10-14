@@ -1,0 +1,12 @@
+[package]
+name = "adhdiff-shared"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+authors = ["bemyak"]
+description = "Shared types for the adhdiff review map and viewer IPC"
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

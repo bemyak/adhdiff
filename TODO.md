@@ -1,0 +1,15 @@
+- [x] The height of left panel header jump between expanded and collapsed state
+- [x] When scrolling the the end of list with a several small hunks the selection sometimes jump with the one-before-the-last element
+- [ ] Add search (Ctrl+F): browser-style, NOT a filter. Overlay popover top-right, styled like the collapsed hunk list panel, takes focus on open. Input field + prev/next buttons; F3 / Shift+F3 = next/prev (preventDefault the browser). Counter `X/Y` (X = current match, Y = total). Highlight all occurrences when query length >= 3. Navigate jumps focus/scroll to match element. Division of labor: BACKEND searches (labels, paths, all raw hunk bodies) via new IPC returning ordered matches `(hunk, row, col range)`; FRONTEND only highlights (wrap text nodes in injected rows, not CSS Custom Highlight API — WebKitGTK). Highlight pass runs on body inject and scroll-in reveal, keyed to current query. X/Y counts only matches in VISIBLE hunks: tier-filtered-out or collapsed hunks are excluded entirely; bodies of visible-but-lazily-unloaded hunks are included (backend serves their text).
+- [x] The initial scroll position should be an the very top. Currently, it select the first element, to the scroll is ~10x down
+- [ ] When doing remote code review, the agent show post their own review comments (in different color, e.g. orange). Should use author: agent. Human can either accept it (moves to author: human, color changes to blue), or remove
+- [x] Pressing V collapses the hunk, so the next hunk jumps up, but the scroll jumps to the position where the next hunk used to be before the collapse
+  [ ] (maybe the solution is not to jump to the next hunk of V)
+- [x] The bottom border of hunk card is a bit thiker than the rest
+- [ ] Add tree-sitter-based bread crumbs to the hunks. When segments of a hunk a filtered out, a new breadcrumb should be added in place of the missing lines if the gap crosses cross-function boundry
+- [ ] Add fold/unfold buttons to hunk list panel (should look and work like file tree panel in Zed/VSCode)
+- [x] Comment indicator covers line numbers
+- [x] When collapsing a hunk, the view should scroll to the newly-collapsed header (currently stays in-place, so a random hunk gets into view)
+- [x] Add a new button left of filters (but alligned to it) to show only hunks with comments. Should be just a comment icon, no text (only on hover)
+- [x] When a hunk is collapsed, a border between header and comment section becomes thiker
+- [x] When selecting text, the selection spawns across the line full-length (covering the empty space) and sometimes goes over lines numbers. Only the text should be selected (and indentation)

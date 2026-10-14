@@ -1,0 +1,278 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117;
+  --bg-panel: #161b22;
+  --bg-panel-2: #21262d;
+  --fg: #e6edf3;
+  --fg-dim: #8b949e;
+  --border: #30363d;
+  --add: #238636;
+  --del: #da3633;
+  --p0: #ff7b72;
+  --p1: #f2cc60;
+  --p2: #79c0ff;
+  --p3: #d2a8ff;
+  --p4: #56d4dd;
+  --p5: #8b949e;
+  --p6: #8b949e;
+  --p7: #8b949e;
+  --accent: #58a6ff;
+}
+html, body { background: var(--bg); color: var(--fg); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; height: 100%; }
+body { display: flex; flex-direction: column; }
+
+header { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 12px 20px; }
+.panel-toggle { display: inline-flex; align-items: center; background: transparent; border: 1px solid var(--border); color: var(--fg-dim); padding: 2px 5px; border-radius: 4px; corner-shape: squircle; cursor: pointer; flex-shrink: 0; }
+.panel-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.panel-toggle.on { color: var(--accent); border-color: var(--accent); }
+.title-block { width: 100%; }
+.title-block h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.summary { color: var(--fg-dim); font-size: 13px; line-height: 1.4; }
+
+.outline-filter { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 12px; height: 40px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.filter-group { display: flex; gap: 8px; align-items: center; }
+.filter-icon { color: var(--fg-dim); display: inline-flex; flex-shrink: 0; }
+
+.mode-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; corner-shape: squircle; overflow: hidden; }
+.mode-switch button { background: transparent; border: 0; color: var(--fg-dim); padding: 2px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; }
+.mode-switch button.active { background: var(--accent); color: #0b0d10; }
+.mode-switch button:not(.active):hover { color: var(--fg); }
+
+.layout-row { display: flex; flex: 1; overflow: hidden; position: relative; }
+.outline { width: 320px; background: var(--bg-panel); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
+/* Collapsed: the aside drops to zero width (no layout footprint — the
+   detail pane fills main's full width) and the surviving header strip
+   floats over the content at the panel header's old top-left corner,
+   positioned against main. Rows are made invisible and widthless rather
+   than display:none so the list's scroll offset survives the toggle; the
+   tier filter stays in the DOM so its selection survives. */
+.outline.closed { width: 0; border-right-width: 0; }
+/* Collapsed chip corner: a squircle (superellipse) bottom-right, square
+   elsewhere. WebKitGTK 2.54 doesn't parse corner-shape:squircle (measured at
+   runtime: CSS.supports() false, computed cornerShape undefined — the
+   squircle declarations elsewhere in this sheet degrade to circular
+   border-radius there), so the silhouette is cut with clip-path instead. A
+   real border can't follow the arc (clip-path would slice it off), so the
+   1px edge is painted structurally: the strip's own background is the
+   border color under the outer path, and ::before covers it with the panel
+   color under a copy inset 1px on the right and bottom. Each path is the
+   chip box with one corner replaced by a superellipse quadrant
+   (x^4+y^4=r^4 as a cubic bézier; handle 0.909r pins the curve's midpoint
+   to the superellipse's diagonal point) for the 41x40 borderless box (the
+   .outline-filter height pinned at 40px keeps the silhouette level with the
+   expanded header band): r=14 outside, r=13 inside. */
+.outline.closed .outline-filter {
+    position: absolute;
+    top: 0;
+    left: 0;
+    justify-content: flex-start;
+    /* Same box model as the expanded header (10px/12px padding, 1px bottom
+       border) so the toggle button keeps its exact position and size;
+       the right padding trims the chip to the 41px silhouette. */
+    padding: 10px 4px 10px 12px;
+    /* Only the button catches clicks; the rest of the chip footprint
+       overlaps the first hunk header and must let events fall through. */
+    pointer-events: none;
+    border: 0 solid transparent;
+    border-bottom-width: 1px;
+    background: var(--border);
+    clip-path: path("M0 0 H41 V26 C41 38.728, 39.728 40, 27 40 H0 Z");
+}
+.outline.closed .outline-filter::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--bg-panel);
+    clip-path: path("M0 0 H40 V26 C40 37.819, 38.819 39, 27 39 H0 Z");
+}
+.outline.closed .outline-filter .panel-toggle {
+    position: relative;
+    pointer-events: auto;
+}
+.outline.closed .filter-group { display: none; }
+.outline.closed .outline-item { visibility: hidden; width: 0; overflow: hidden; }
+
+.outline-item { padding: 8px 12px 8px 12px; border-left: 3px solid transparent; cursor: pointer; font-size: 12px; line-height: 1.4; }
+.outline-item:hover, .outline-item.focused { background-color: var(--bg-panel-2); }
+.outline-item.tier-p0-border { border-left-color: var(--p0); }
+.outline-item.tier-p1-border { border-left-color: var(--p1); }
+.outline-item.tier-p2-border { border-left-color: var(--p2); }
+.outline-item.tier-p3-border { border-left-color: var(--p3); }
+.outline-item .tier-badge { font-size: 10px; font-weight: 700; color: var(--fg-dim); }
+.outline-item .meta-row { display: flex; align-items: baseline; gap: 6px; }
+.outline-item .file { color: var(--fg-dim); font-family: ui-monospace, monospace; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outline-item .indicators { flex-shrink: 0; font-size: 10px; white-space: nowrap; margin-left: auto;
+    display: inline-flex; gap: 4px; align-items: center; }
+.outline-item .ind { display: inline-block; text-align: center; }
+.outline-item .ind-comment { color: var(--accent); font-weight: 700; }
+.outline-item .ind-viewed svg { width: 10px; height: 10px; vertical-align: middle; }
+.outline-item .ind-viewed { display: none; }
+.outline-item.viewed .ind-viewed { display: inline-block; }
+.outline-item.viewed { opacity: .35; }
+.outline-item .label { margin-top: 2px; color: var(--fg); }
+/* Supports-graph children: one vertical guide column per ancestor depth.
+   The row's inline --depth drives both the indent (14px per level over the
+   12px base) and how many 1px gradient columns stay unclipped. Guides are
+   background images, so they paint over hover/focus background colors; a
+   subtree's column stops at the first row at or above its depth. Columns
+   sit at 10px + 14px·level from the padding edge. */
+.outline-child {
+    padding-left: calc(12px + 14px * var(--depth));
+    background-image: repeating-linear-gradient(90deg, var(--border) 0 1px, transparent 1px 14px);
+    background-repeat: no-repeat;
+    background-position: 10px 0;
+    background-size: calc(1px + 14px * (var(--depth) - 1)) 100%;
+}
+
+.detail { flex: 1; overflow-y: auto; padding: 20px 28px; position: relative; }
+/* While a scroll burst is live (lib.rs install_scroll brands the pane
+   `scrolling` from its first event to the idle debounce), body rows take
+   no pointer: no row :hover entry, no seg tooltip/head-label writes, no
+   forced layouts chasing rows under a parked pointer — the main thread
+   never syncs, so the async momentum glide runs uninterrupted. */
+.detail.scrolling .hunk-body { pointer-events: none; }
+.hunk { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; corner-shape: squircle; margin-bottom: 16px; scroll-margin-top: 16px; overflow: hidden; }
+.hunk.tier-p0-bg-deemph { background: var(--bg-panel); }
+.hunk-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.hunk.focused .hunk-head { background: var(--bg-panel-2); }
+.tier-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; corner-shape: squircle; background: var(--bg-panel-2); }
+.tier-tag.tier-p0 { color: var(--p0); }
+.tier-tag.tier-p1 { color: var(--p1); }
+.tier-tag.tier-p2 { color: var(--p2); }
+.tier-tag.tier-p3 { color: var(--p3); }
+.tier-tag.tier-p4, .tier-tag.tier-p5, .tier-tag.tier-p6, .tier-tag.tier-p7 { color: var(--p5); }
+.hunk-title { font-weight: 600; }
+.hunk-loc { font-family: ui-monospace, monospace; font-size: 11px; color: var(--fg-dim); }
+.hunk-conf { font-size: 11px; color: var(--fg-dim); }
+.view-btn { margin-left: auto; display: inline-flex; align-items: center; background: transparent; border: 1px solid var(--border); color: var(--fg-dim); padding: 4px; border-radius: 6px; corner-shape: squircle; cursor: pointer; }
+.view-btn:hover { color: var(--accent); border-color: var(--accent); }
+.view-btn svg, .chevron svg { display: block; }
+.view-btn .icon-open { display: inline-flex; }
+.view-btn .icon-closed { display: none; }
+.view-btn.viewed .icon-open { display: none; }
+.view-btn.viewed .icon-closed { display: inline-flex; }
+.chevron { display: inline-flex; align-items: center; background: transparent; border: 1px solid var(--border); color: var(--fg-dim); padding: 4px; border-radius: 6px; corner-shape: squircle; cursor: pointer; }
+.chevron:hover { color: var(--accent); border-color: var(--accent); }
+.hunk.collapsed .rationale, .hunk.collapsed pre.hunk-body { display: none; }
+.hunk.collapsed .body-slot { display: none; }
+.hunk.collapsed .chevron { transform: rotate(180deg); }
+.hunk.collapsed .hunk-head { border-bottom: 0; }
+.open-btn { display: inline-flex; align-items: center; background: transparent; border: 1px solid var(--border); color: var(--fg-dim); padding: 4px; border-radius: 6px; corner-shape: squircle; cursor: pointer; }
+.open-btn svg { display: block; }
+.open-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+.rationale { padding: 10px 14px; color: var(--fg-dim); font-size: 13px; line-height: 1.5; font-style: italic; border-bottom: 1px solid var(--border); }
+
+pre.hunk-body { font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace; font-size: 12px; line-height: 1.55; overflow-x: auto; margin: 0; }
+/* Stand-in for a not-yet-fetched body; inline min-height (reserved by the
+   component) matches the final block height so the inject doesn't reflow
+   the pane. */
+.body-loading { display: flex; align-items: center; justify-content: center; color: var(--fg-dim); font-size: 11px; }
+.hunk-body > div { position: relative; padding-left: 50px; min-height: calc(1em * 1.55); }
+.hunk-body > div > .rt { display: inline-block; }
+/* WebCore fills selection gaps to the block's edges (gutter, pin band, line
+   end). Make that band transparent; only the text wrapper paints. */
+pre.hunk-body::selection, .hunk-body > div::selection { background: transparent; }
+.hunk-body > div > .rt::selection, .hunk-body > div > .rt *::selection { background: highlight; }
+.hunk-body > div::before { content: attr(data-oline); position: absolute; left: 0; width: 38px; text-align: right; color: var(--fg-dim); user-select: none; cursor: pointer; }
+.hunk-body > .line-del::before { content: attr(data-oold); }
+.line-add { background: rgba(35, 134, 54, 0.10); }
+.line-add:hover { background: rgba(35, 134, 54, 0.22); }
+.line-del { background: rgba(218, 54, 51, 0.10); }
+.line-del:hover { background: rgba(218, 54, 51, 0.22); }
+.line-ctx > span { color: var(--fg); }
+.line-ctx:hover { background: rgba(88, 166, 255, 0.06); }
+.line-in-range { background: rgba(88, 166, 255, 0.12); }
+.line-warn { color: var(--p1); }
+
+/* Comment pin: 6px accent band in the free gap between the number gutter
+   (ends at 38px) and the code content (padding-left:50px): x=42-48.
+   Painted as a background band — no box-shadow, so it never conflicts
+   with the seg-start hairline, and line-add/del/ctx background colors
+   still compose underneath. */
+.hunk-body > div.line-commented, .hunk-body > div.line-composing { background-image: linear-gradient(var(--accent) 0 0); background-repeat: no-repeat; background-size: 6px 100%; background-position: 42px 0; }
+
+/* Tier palette vars for the segment chrome below (cell text + seg-start
+   hairline). */
+.hunk-body > div.seg-p0 { --seg-edge: var(--p0); }
+.hunk-body > div.seg-p1 { --seg-edge: var(--p1); }
+.hunk-body > div.seg-p2 { --seg-edge: var(--p2); }
+.hunk-body > div.seg-p3 { --seg-edge: var(--p3); }
+.hunk-body > div.seg-p4 { --seg-edge: var(--p4); }
+.hunk-body > div.seg-p5 { --seg-edge: var(--p5); }
+.hunk-body > div.seg-p6 { --seg-edge: var(--p6); }
+.hunk-body > div.seg-p7 { --seg-edge: var(--p7); }
+
+/* Segment rail: a fixed-width (~2ch) tier-tinted band at the far left of
+   every row belonging to a segment. The "Pn" label paints only on the
+   segment's FIRST row (.seg-start); the remaining rows carry just the
+   tinted band. Absolute and out of flow: rows keep padding-left:50px, so
+   the code content box starts at identical x on segmented and
+   unsegmented rows, and the drag-gutter hit zone is untouched.
+   Sits fully left of the comment pin (which lives at 42px, see above). */
+.hunk-body > div:is(.seg-p0, .seg-p1, .seg-p2, .seg-p3, .seg-p4, .seg-p5, .seg-p6, .seg-p7)::after {
+    content: "";
+    position: absolute; left: 0; top: 0; bottom: 0; width: 11px;
+    font-size: 9px; line-height: inherit; color: var(--seg-edge);
+    user-select: none;
+}
+/* Heat ramp per spec: fades to nothing below P4. */
+.hunk-body > div.seg-p0::after { background: color-mix(in srgb, var(--seg-edge) 30%, transparent); }
+.hunk-body > div.seg-p1::after { background: color-mix(in srgb, var(--seg-edge) 22%, transparent); }
+.hunk-body > div.seg-p2::after { background: color-mix(in srgb, var(--seg-edge) 15%, transparent); }
+.hunk-body > div.seg-p3::after { background: color-mix(in srgb, var(--seg-edge) 9%, transparent); }
+
+/* The tier label and a 2px hairline mark only the segment's top row. */
+.hunk-body > div.seg-p0.seg-start::after { content: "P0"; }
+.hunk-body > div.seg-p1.seg-start::after { content: "P1"; }
+.hunk-body > div.seg-p2.seg-start::after { content: "P2"; }
+.hunk-body > div.seg-p3.seg-start::after { content: "P3"; }
+.hunk-body > div.seg-p4.seg-start::after { content: "P4"; }
+.hunk-body > div.seg-p5.seg-start::after { content: "P5"; }
+.hunk-body > div.seg-p6.seg-start::after { content: "P6"; }
+.hunk-body > div.seg-p7.seg-start::after { content: "P7"; }
+.hunk-body > div.seg-start::after { box-shadow: inset 0 2px 0 0 var(--seg-edge, transparent); }
+
+/* Stage-2 fold: hidden rows occupy nothing; one seam strip per run sits
+   where the run starts (inherits the body's 50px gutter padding, no
+   ::before number — it carries no data-oline). */
+.hunk-body .fold-hidden { display: none; }
+.hunk-body > div.fold-seam { color: var(--fg-dim); font-size: 11px; font-style: italic; background: var(--bg-panel-2); user-select: none; cursor: default; }
+
+/* Reusable floating segment info (position inline via fold.rs). No
+   display property — the [hidden] attribute must keep hiding it. */
+.seg-tooltip { position: fixed; z-index: 70; max-width: min(420px, 90vw); padding: 6px 10px; background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 6px; corner-shape: squircle; color: var(--fg); font-size: 11px; line-height: 1.4; pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+
+/* Live segment label in the focused hunk's head line. Zero-basis grow
+   slot: it absorbs exactly the free space `.view-btn`'s auto margin would
+   otherwise take, so the buttons stay right-aligned whether the label is
+   empty or painted, and its content ellipsizes instead of ever wrapping
+   the head to a second line — the head's height is constant across label
+   toggles, so painting it never reflows the scroll content. */
+
+.comments { border-top: 1px solid var(--border); padding: 10px 14px; }
+.comment { padding: 6px 0; font-size: 13px; display: flex; gap: 10px; align-items: baseline; cursor: pointer; }
+.comment:hover { color: var(--accent); }
+.comment .loc { color: var(--fg-dim); font-family: ui-monospace, monospace; font-size: 11px; flex-shrink: 0; }
+.comment .body { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.comment-x[data-action] { all: unset; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 4px; corner-shape: squircle; color: var(--fg-dim); font-size: 10px; line-height: 1; cursor: pointer; flex-shrink: 0; }
+.comment-x[data-action]:hover { color: #f85149; border-color: #f85149; }
+
+.composer-slot { position: absolute; z-index: 5; width: min(720px, 90%); }
+.composer-card { background: var(--bg-panel); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; corner-shape: squircle; padding: 20px; width: 100%; font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 13px; line-height: 1.4; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+.composer-card h3 { margin-bottom: 8px; }
+.composer-card .meta { font-size: 12px; color: var(--fg-dim); font-family: ui-monospace, monospace; margin-bottom: 8px; }
+.composer-card textarea { width: 100%; min-height: 120px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; corner-shape: squircle; padding: 10px; font-family: inherit; font-size: 13px; resize: vertical; }
+.composer-card textarea:focus { outline: none; border-color: var(--accent); }
+.composer-card .error { margin-top: 8px; font-size: 12px; color: var(--p0); }
+.composer-card button:disabled { opacity: .5; cursor: default; }
+.composer-card .buttons { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+.composer-card button { padding: 6px 14px; border-radius: 4px; corner-shape: squircle; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--fg); }
+.composer-card button.danger { margin-right: auto; color: var(--p0); border-color: var(--p0); }
+.composer-card button.primary { background: var(--accent); border-color: var(--accent); color: #0d1117; font-weight: 600; }
+
+.overlay { position: fixed; inset: 0; background: rgba(1,4,8,0.85); display: flex; align-items: center; justify-content: center; z-index: 60; }
+.overlay pre { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; corner-shape: squircle; padding: 24px 32px; font-size: 12px; line-height: 1.7; overflow: auto; max-height: 80vh; }
+
+/* Present-but-invisible: the single aria-live status region. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

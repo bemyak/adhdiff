@@ -1,0 +1,16 @@
+{
+  "name": "adhdiff",
+  "description": "Priority-tiered, agent-annotated diff review: an agent labels every hunk with a priority tier, the reviewer reads what matters first.",
+  "version": "0.1.0",
+  "author": {
+    "name": "bemyak"
+  },
+  "homepage": "https://github.com/bemyak/adhdiff",
+  "repository": "https://github.com/bemyak/adhdiff",
+  "license": "GPL-3.0-or-later",
+  "keywords": [
+    "code-review",
+    "diff",
+    "adhd"
+  ]
+}

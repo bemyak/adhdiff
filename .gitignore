@@ -1,0 +1,7 @@
+/target
+/frontend/dist
+/result
+/gen
+.adhdiff/
+.idea/
+.vscode/

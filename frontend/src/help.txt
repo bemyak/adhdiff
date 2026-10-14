@@ -1,0 +1,26 @@
+adhdiff — keymap
+
+NAVIGATION
+  j / ↓          next hunk
+  k / ↑          previous hunk
+  J / K          next/prev hunk with comments
+
+VIEW
+  ?              this help
+  Esc            close overlay
+  Ctrl+=         zoom in (Cmd on macOS)
+  Ctrl+-         zoom out
+  Ctrl+0         reset zoom
+
+ACTIONS
+  v               toggle viewed (focused hunk)
+  e               open focused file in $EDITOR
+  t               collapse/expand focused hunk
+  f / F           toggle the left outline panel
+  click line-number gutter → comment anchored at that line
+  drag across the gutter   → comment spanning the dragged line range
+  Ctrl+Enter / Ctrl+Shift+Backspace in the comment box → save / delete the comment
+
+  SKIM
+  < / >          show less / more (P0 → loosest)
+  combo in the left panel: shows more as you move right (P0 → loosest)

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "adhdiff",
+  "version": "0.1.0",
+  "identifier": "dev.adhdiff",
+  "build": {
+    "frontendDist": "frontend/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": { "script": "trunk serve --port 1420", "cwd": "frontend" },
+    "beforeBuildCommand": { "script": "trunk build --release", "cwd": "frontend" }
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data:"
+    },
+    "windows": [
+      {
+        "title": "adhdiff",
+        "width": 1400,
+        "height": 900
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
