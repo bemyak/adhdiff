@@ -54,7 +54,7 @@ Binary installed, skill wired into codex / opencode / claude-code / omp
 
 ## Build from source
 
-Needs Rust 1.88+ (edition 2024), [`trunk`](https://trunkrs.dev), the
+Needs Rust 1.90+ (edition 2024), [`trunk`](https://trunkrs.dev), the
 `wasm32-unknown-unknown` target and, on Linux, `webkit2gtk-4.1`.
 
 ```sh

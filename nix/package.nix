@@ -1,5 +1,6 @@
 {
   lib,
+  craneLib,
   rustPlatform,
   fetchCrate,
   fetchurl,
@@ -9,8 +10,6 @@
   trunk,
   binaryen,
   llvmPackages,
-  gitMinimal,
-  stdenv,
   webkitgtk_4_1,
   libsoup_3,
   gtk3,
@@ -63,80 +62,95 @@ let
       hash = "sha256-vmUrWVU7kPJJxO5qIVeAkwQyWDELO1Z4Z5gitz2kco8=";
     };
   };
+
+  root = ../.;
+  src = lib.fileset.toSource {
+    inherit root;
+    fileset = lib.fileset.unions [
+      (craneLib.fileset.commonCargoSources root)
+      (root + "/.cargo/config.toml")
+      (root + "/build.rs")
+      (root + "/tauri.conf.json")
+      (root + "/icons")
+      (root + "/skills")
+      (root + "/src/prompt_template.md")
+      (root + "/frontend/index.html")
+      (root + "/frontend/styles.css")
+      (root + "/frontend/src/help.txt")
+    ];
+  };
+
+  commonArgs = {
+    pname = "adhdiff";
+    inherit (cargoToml.package) version;
+    inherit src;
+    strictDeps = true;
+
+    # frontend/ is wasm-only (built by trunk); the host build covers adhdiff
+    # and its path dependency adhdiff-shared.
+    cargoExtraArgs = "--locked -p adhdiff";
+
+    nativeBuildInputs = [
+      pkg-config
+      trunk
+      binaryen
+      llvmPackages.lld
+      wasm-bindgen-cli
+    ];
+
+    buildInputs = [
+      webkitgtk_4_1
+      libsoup_3
+      gtk3
+      glib
+      cairo
+      pango
+      gdk-pixbuf
+      at-spi2-core
+    ];
+
+    # rustc 1.99+ emits bulk-memory ops that trunk's pinned wasm-opt v123
+    # rejects; point trunk at nixpkgs' binaryen instead (see devShell).
+    env.TRUNK_TOOLS_WASM_OPT = "version_${binaryen.version}";
+    # tree-sitter-language-pack is a dependency, so its build script runs in
+    # the deps stage too; both stages need the same env to share artifacts.
+    env.TSLP_LINK_MODE = "static";
+    env.TSLP_LANGUAGES = "rust,go,python,bash,nix,toml,javascript,typescript,markdown,markdown_inline,hcl,json,yaml,html,css,proto";
+    env.TSLP_SOURCE_BUNDLE_URL = "file://${tslpBundleDir}/parser-sources-1.22.1.tar.zst";
+
+    # Tests run in the devShell and CI; the Nix build only ships the binary.
+    doCheck = false;
+  };
+
+  # crane replaces build.rs and the sources with stubs here, so the deps
+  # build needs neither frontend/dist nor tauri.conf.json.
+  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 in
-rustPlatform.buildRustPackage {
-  pname = "adhdiff";
-  inherit (cargoToml.package) version;
+craneLib.buildPackage (
+  commonArgs
+  // {
+    inherit cargoArtifacts;
 
-  src = lib.cleanSourceWith {
-    src = ../.;
-    filter =
-      name: type:
-      let
-        base = baseNameOf name;
-      in
-      base != ".jj"
-      && base != "target"
-      && base != "result"
-      && !(lib.hasSuffix "/frontend/dist" name);
-  };
+    # tauri-codegen embeds frontend/dist at compile time, so the Leptos
+    # frontend must be built before the host crate. The CLI's
+    # beforeBuildCommand is not run by plain cargo, so run trunk here.
+    preBuild = ''
+      pushd frontend
+      trunk build --offline --frozen --release
+      popd
+    '';
 
-  cargoLock.lockFile = ../Cargo.lock;
+    installPhaseCommand = ''
+      install -Dm755 target/release/adhdiff $out/bin/adhdiff
 
-  nativeBuildInputs = [
-    pkg-config
-    trunk
-    binaryen
-    llvmPackages.lld
-    wasm-bindgen-cli
-  ];
+      mkdir -p $out/share/adhdiff/skills
+      cp -r skills/adhdiff $out/share/adhdiff/skills/
+    '';
 
-  # src/app.rs tests shell out to git (init/add/diff in scratch dirs).
-  nativeCheckInputs = [ gitMinimal ];
-
-  buildInputs = [
-    webkitgtk_4_1
-    libsoup_3
-    gtk3
-    glib
-    cairo
-    pango
-    gdk-pixbuf
-    at-spi2-core
-  ];
-
-  # rustc 1.99+ emits bulk-memory ops that trunk's pinned wasm-opt v123
-  # rejects; point trunk at nixpkgs' binaryen instead (see devShell).
-  env.TRUNK_TOOLS_WASM_OPT = "version_${binaryen.version}";
-  env.TSLP_LINK_MODE = "static";
-  env.TSLP_LANGUAGES = "rust,go,python,bash,nix,toml,javascript,typescript,markdown,markdown_inline,hcl,json,yaml,html,css,proto";
-  env.TSLP_SOURCE_BUNDLE_URL = "file://${tslpBundleDir}/parser-sources-1.22.1.tar.zst";
-
-  # tauri-codegen embeds frontend/dist at compile time, so the Leptos
-  # frontend must be built before the host crate. The CLI's
-  # beforeBuildCommand is not run by plain cargo, so run trunk here.
-  preBuild = ''
-    pushd frontend
-    trunk build --offline --frozen --release
-    popd
-  '';
-
-  installPhase = ''
-    runHook preInstall
-
-    # cargoBuildHook always passes --target <cargoShortTarget>, so the
-    # binary lands under target/<triple>/release rather than target/release.
-    install -Dm755 "target/${stdenv.hostPlatform.rust.cargoShortTarget}/release/adhdiff" $out/bin/adhdiff
-
-    mkdir -p $out/share/adhdiff/skills
-    cp -r skills/adhdiff $out/share/adhdiff/skills/
-
-    runHook postInstall
-  '';
-
-  meta = {
-    description = "Agent-annotated diff review CLI with desktop and terminal UIs";
-    license = lib.licenses.gpl3Plus;
-    mainProgram = "adhdiff";
-  };
-}
+    meta = {
+      description = "Agent-annotated diff review CLI with desktop and terminal UIs";
+      license = lib.licenses.gpl3Plus;
+      mainProgram = "adhdiff";
+    };
+  }
+)

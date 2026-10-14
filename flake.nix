@@ -2,9 +2,15 @@
   description = "adhdiff dev shell — native deps for building/running the Tauri app";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.crane.url = "github:ipetkov/crane";
 
   outputs =
-    { self, nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      crane,
+      ...
+    }:
     let
       forEachSystem =
         f:
@@ -14,7 +20,7 @@
     in
     {
       packages = forEachSystem (pkgs: rec {
-        adhdiff = pkgs.callPackage ./nix/package.nix { };
+        adhdiff = pkgs.callPackage ./nix/package.nix { craneLib = crane.mkLib pkgs; };
         default = adhdiff;
       });
 

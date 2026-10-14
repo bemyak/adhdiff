@@ -53,7 +53,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::diff::{find_raw_for, parse_unified, row_to_new_line};
-use crate::highlight::FileHighlighter;
+use crate::highlight::{Class, Highlighter, Span as HlSpan};
 use crate::state::{self, Inner, comment_key, comments_at, row_pins_for};
 use adhdiff_shared::{AdhDiffMap, Confidence, LabeledHunk, SavedComment};
 
@@ -131,7 +131,7 @@ struct BodyRow {
     /// Diff row of this body line; `None` for the synthetic "more lines"
     /// footer.
     row: Option<u32>,
-    /// Syntect runs for the code text: (text, 0xRRGGBB).
+    /// Highlighted runs for the code text.
     spans: Vec<(String, Color)>,
 }
 
@@ -580,7 +580,7 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup) -> Vec<BodyRow> {
         return Vec::new();
     };
 
-    let hl = FileHighlighter::for_hunk(&gr.file, &raw.body, raw.new_start);
+    let hl = Highlighter::for_hunk(&gr.file, &raw.body);
     let mut rows: Vec<BodyRow> = Vec::new();
     let mut new_line_no = raw.new_start;
     let mut old_line_no = if raw.old_start > 0 { raw.old_start } else { 0 };
@@ -609,7 +609,7 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup) -> Vec<BodyRow> {
             old_line_no = old_line_no.saturating_add(1);
             (RowKind::Ctx, ln.to_string(), rest)
         };
-        let spans = highlight_spans(&hl, text);
+        let spans = highlight_spans(hl.spans(i), text);
         rows.push(BodyRow {
             kind,
             gutter,
@@ -631,18 +631,40 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup) -> Vec<BodyRow> {
 
 /// Highlight one line → (text, Color) runs; once per line ever (bodies
 /// are cached for the session).
-fn highlight_spans(hl: &FileHighlighter, text: &str) -> Vec<(String, Color)> {
-    let Some(runs) = hl.highlight_line_runs(text) else {
-        return vec![(text.to_string(), col::FG)];
-    };
-    runs.into_iter()
-        .map(|(s, hex)| {
-            (
-                s,
-                Color::Rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8),
-            )
-        })
-        .collect()
+fn highlight_spans(spans: &[HlSpan], text: &str) -> Vec<(String, Color)> {
+    let mut runs = Vec::new();
+    let mut at = 0;
+    for &(s, e, class) in spans {
+        let (Some(gap), Some(body)) = (text.get(at..s), text.get(s..e)) else {
+            continue;
+        };
+        if !gap.is_empty() {
+            runs.push((gap.to_string(), col::FG));
+        }
+        runs.push((body.to_string(), class_color(class)));
+        at = e;
+    }
+    let tail = text.get(at..).unwrap_or("");
+    if !tail.is_empty() || runs.is_empty() {
+        runs.push((tail.to_string(), col::FG));
+    }
+    runs
+}
+
+fn class_color(class: Class) -> Color {
+    match class {
+        Class::Keyword | Class::Operator => Color::Rgb(0xff, 0x7b, 0x72),
+        Class::String => Color::Rgb(0xa5, 0xd6, 0xff),
+        Class::Comment => Color::Rgb(0x8b, 0x94, 0x9e),
+        Class::Function => Color::Rgb(0xd2, 0xa8, 0xff),
+        Class::Type | Class::Variable => Color::Rgb(0xff, 0xa6, 0x57),
+        Class::Number | Class::Property => Color::Rgb(0x79, 0xc0, 0xff),
+        Class::Constant => Color::Rgb(0x56, 0xd4, 0xdd),
+        Class::Punctuation => Color::Rgb(0xc9, 0xd1, 0xd9),
+        Class::Attribute => Color::Rgb(0xd2, 0x99, 0x22),
+        Class::Tag => Color::Rgb(0x7e, 0xe7, 0x87),
+        Class::Label => Color::Rgb(0xf2, 0xcc, 0x60),
+    }
 }
 
 // ---------- key handling (pure mappings, unit-tested) ----------

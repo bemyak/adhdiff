@@ -3,7 +3,7 @@
 //! frontend CSS targets, syntax-highlighted via `highlight`.
 
 use crate::diff::{RawHunk, find_raw_for};
-use crate::highlight::FileHighlighter;
+use crate::highlight::{Highlighter, Span};
 use crate::state::{Inner, row_pins_for};
 
 /// The body of the raw hunk containing diff row `row`, rendered.
@@ -15,7 +15,7 @@ pub fn render_hunk_body_html(g: &Inner, row: u32) -> String {
 }
 
 /// Render one raw hunk's body as `line-*` divs with the shared line-number
-/// gutter, comment pins, and syntect highlighting. Every row carries its
+/// gutter, comment pins, and tree-sitter highlighting. Every row carries its
 /// absolute diff row as `data-row`.
 ///
 /// Sub-hunk segments (the map entries tiling the raw hunk's rows) are
@@ -23,7 +23,7 @@ pub fn render_hunk_body_html(g: &Inner, row: u32) -> String {
 /// `seg-p{tier}` + `data-seg="i"`, and each segment's first row also
 /// carries `seg-start`. Rows no segment covers (stale maps) get neither.
 pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk) -> String {
-    let hl = FileHighlighter::for_hunk(file_key, &raw.body, raw.new_start);
+    let hl = Highlighter::for_hunk(file_key, &raw.body);
     let ranges = row_pins_for(g, file_key);
     // Start-sorted tiling of this raw hunk's rows.
     let segs = g.map.segments_in(raw.row_start, raw.row_end);
@@ -85,9 +85,7 @@ pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk) -> String 
             }
         }
 
-        let inner_html = hl
-            .highlight_line_html(prefix)
-            .unwrap_or_else(|| html_escape(prefix));
+        let inner_html = spans_html(prefix, hl.spans(dline));
         buf.push_str(&format!(
             r#"<div class="{}{}{}" data-dline="{}" data-row="{}" {}{}><span class="rt">{}</span></div>"#,
             cls,
@@ -102,6 +100,25 @@ pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk) -> String 
     }
     buf.push_str("</pre>");
     buf
+}
+
+fn spans_html(text: &str, spans: &[Span]) -> String {
+    let mut out = String::new();
+    let mut at = 0;
+    for &(s, e, class) in spans {
+        let (Some(gap), Some(body)) = (text.get(at..s), text.get(s..e)) else {
+            continue;
+        };
+        out.push_str(&html_escape(gap));
+        out.push_str(&format!(
+            r#"<span class="hl-{}">{}</span>"#,
+            class.name(),
+            html_escape(body)
+        ));
+        at = e;
+    }
+    out.push_str(&html_escape(text.get(at..).unwrap_or("")));
+    out
 }
 
 fn html_escape(s: &str) -> String {
@@ -266,6 +283,24 @@ mod tests {
             );
             assert!(html.contains("&lt;"), "{file}: {html}");
         }
+    }
+
+    #[test]
+    fn multibyte_row_html_keeps_text_intact() {
+        let g = demo_inner();
+        let raw = RawHunk {
+            old_start: 0,
+            old_end: 0,
+            new_start: 1,
+            new_end: 1,
+            row_start: 20,
+            row_end: 20,
+            body: "+let s = \"héllo → ✓\";\n".into(),
+            header: "@@ -0,0 +1 @@".into(),
+        };
+        let html = render_raw_hunk_html(&g, "a.rs", &raw);
+        assert!(html.contains("&quot;héllo → ✓&quot;"), "{html}");
+        assert!(html.contains("hl-string"), "{html}");
     }
 
     #[test]

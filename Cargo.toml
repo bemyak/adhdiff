@@ -16,7 +16,7 @@ members = ["shared", "frontend"]
 
 [workspace.package]
 repository = "https://github.com/bemyak/adhdiff"
-rust-version = "1.88"
+rust-version = "1.90"
 
 [features]
 default = ["custom-protocol"]
@@ -34,13 +34,13 @@ tree-sitter-language-pack = { version = "1.22", default-features = false }
 tree-sitter = "0.27"
 ratatui = "0.30.2"
 crossterm = "0.29.0"
-syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 hex = "0.4"
 tauri = { version = "2", features = [] }
+tree-sitter-highlight = "0.27"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [profile.release]
 strip = true
-lto = true
+lto = "thin"

@@ -288,7 +288,7 @@ pub fn outline_position(g: &Inner, mi: usize) -> Option<usize> {
 }
 
 /// A raw hunk's rendered body + the comments covering its whole range.
-/// First render goes through syntect; the result is cached in
+/// First render goes through tree-sitter; the result is cached in
 /// `g.body_cache` under the anchor's map index and reused until a
 /// comment mutation on the file invalidates it.
 /// `mi` may name any entry of the hunk — segment or anchor alike.
