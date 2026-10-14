@@ -113,11 +113,11 @@ pub fn OutlineRow(state: AppState, oi: usize) -> impl IntoView {
             aria-selected=move || (state.focused.get() == oi).to_string()
             tabindex="-1"
             // Outline clicks are jump navigation: focus, then scroll the
-            // detail pane to the target (click_focus itself never
-            // scrolls — in-pane clicks must not move the viewport).
+            // detail pane to the entry's first row (click_focus itself
+            // never scrolls — in-pane clicks must not move the viewport).
             on:click=move |_| {
                 state.click_focus(oi);
-                crate::scroll_focus_into_view(oi);
+                state.navigate(oi);
             }
         >
             <div class="meta-row">

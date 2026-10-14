@@ -212,6 +212,8 @@ pre.hunk-body::selection, .hunk-body > div::selection { background: transparent;
 .line-ctx:hover { background: rgba(88, 166, 255, 0.06); }
 .line-in-range { background: rgba(88, 166, 255, 0.12); }
 .line-warn { color: var(--p1); }
+.hunk-body > .ctx-extra { opacity: 0.55; }
+.hunk-body > .ctx-extra::before { cursor: default; }
 
 /* Comment pin: 6px accent band in the free gap between the number gutter
    (ends at 38px) and the code content (padding-left:50px): x=42-48.

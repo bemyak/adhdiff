@@ -197,7 +197,7 @@ fn file_comments(g: &Inner, file: &str) -> FileComments {
 }
 
 /// Build the shared review state for both `run_app` and the tests.
-fn build_inner(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<Inner> {
+fn build_inner(map: AdhDiffMap, diff: &[u8], out: Option<String>, context: u32) -> Result<Inner> {
     let files = parse_unified(diff)?;
     let diff_sha = hex_sha256(diff);
 
@@ -222,11 +222,12 @@ fn build_inner(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<Inne
         workdir_hint,
         editor,
         body_cache: std::collections::HashMap::new(),
+        context,
     })
 }
 
-pub fn run_app(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<()> {
-    let inner = build_inner(map, diff, out)?;
+pub fn run_app(map: AdhDiffMap, diff: &[u8], out: Option<String>, context: u32) -> Result<()> {
+    let inner = build_inner(map, diff, out, context)?;
     eprintln!("adhdiff: review state: {}", inner.state_path.display());
     match std::fs::remove_file(inner.state_path.with_file_name("REVIEW_DONE")) {
         Ok(()) => {}
@@ -282,7 +283,7 @@ mod tests {
             serde_json::from_slice(&std::fs::read(format!("{root}/demo.map.json")).unwrap())
                 .unwrap();
         let diff = std::fs::read(format!("{root}/demo.diff")).unwrap();
-        build_inner(map, &diff, Some(out.to_string_lossy().into())).unwrap()
+        build_inner(map, &diff, Some(out.to_string_lossy().into()), 0).unwrap()
     }
 
     fn scratch_dir(tag: &str) -> std::path::PathBuf {
@@ -568,7 +569,7 @@ mod tests {
             serde_json::from_slice(&std::fs::read(format!("{root}/demo.map.json")).unwrap())
                 .unwrap();
         let diff = std::fs::read(format!("{root}/demo.diff")).unwrap();
-        let mut inner = build_inner(map, &diff, Some(file.to_string_lossy().into())).unwrap();
+        let mut inner = build_inner(map, &diff, Some(file.to_string_lossy().into()), 0).unwrap();
         assert_eq!(inner.state_path, file);
         toggle_viewed_now(&mut inner, "src/big.rs", 6).unwrap();
         assert!(file.is_file());

@@ -181,6 +181,20 @@ pub fn check_map(map: &AdhDiffMap, diff: &[u8], strict: bool) -> Report {
                 ));
             }
 
+            for w in segs.windows(2) {
+                let (a, b) = (&map.hunks[w[0]], &map.hunks[w[1]]);
+                if a.priority == b.priority && b.row_start == a.row_end.saturating_add(1) {
+                    warnings.push(format!(
+                        "{file} @@ {}-{}: adjacent same-tier segments at {} and {} (P{}) — merge them unless the labels carry different intent",
+                        raw.row_start,
+                        raw.row_end,
+                        a.row_start,
+                        b.row_start,
+                        a.priority.as_u8()
+                    ));
+                }
+            }
+
             // Fragmentation floor: tiny segments inside a large hunk are
             // noise. Raw hunks of 100 rows or fewer are exempt.
             let hunk_rows = raw.row_end - raw.row_start + 1;
@@ -492,6 +506,30 @@ diff --git a/src/gone.rs b/src/gone.rs
             "unexpected warnings: {:?}",
             r.warnings
         );
+    }
+
+    #[test]
+    fn adjacent_same_tier_segments_warn() {
+        let adjacent = |r: &Report| {
+            r.warnings
+                .iter()
+                .filter(|w| w.contains("adjacent same-tier"))
+                .count()
+        };
+        let r = check(
+            &gen_diff(40),
+            vec![gen_seg(Priority::P3, 1, 20), gen_seg(Priority::P3, 21, 40)],
+        );
+        assert!(r.errors.is_empty(), "unexpected errors: {:?}", r.errors);
+        assert_eq!(adjacent(&r), 1, "{:?}", r.warnings);
+        assert!(r.warnings[0].contains("(P3)"), "{:?}", r.warnings);
+        let r = check(
+            &gen_diff(40),
+            vec![gen_seg(Priority::P3, 1, 20), gen_seg(Priority::P5, 21, 40)],
+        );
+        assert_eq!(adjacent(&r), 0, "{:?}", r.warnings);
+        let r = check(&gen_diff(40), vec![gen_seg(Priority::P3, 1, 40)]);
+        assert_eq!(adjacent(&r), 0, "{:?}", r.warnings);
     }
 
     #[test]

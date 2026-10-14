@@ -201,12 +201,26 @@ fn split_row(l: &str) -> (Side, &str) {
 
 /// Per-row spans for one raw hunk body, indexed like `body.lines()`.
 pub struct Highlighter {
+    before: Vec<Vec<Span>>,
     rows: Vec<Vec<Span>>,
+    after: Vec<Vec<Span>>,
 }
 
 impl Highlighter {
+    #[cfg(test)]
     pub fn for_hunk(path: &str, body: &str) -> Self {
-        let rows: Vec<(Side, &str)> = body.lines().map(split_row).collect();
+        Self::with_context(path, body, &[], &[])
+    }
+
+    /// Like `for_hunk`, with extra new-side lines directly above and below
+    /// the body joining the new-side virtual document.
+    pub fn with_context(path: &str, body: &str, before: &[&str], after: &[&str]) -> Self {
+        let rows: Vec<(Side, &str)> = before
+            .iter()
+            .map(|t| (Side::New, *t))
+            .chain(body.lines().map(split_row))
+            .chain(after.iter().map(|t| (Side::New, *t)))
+            .collect();
         let mut out = vec![Vec::new(); rows.len()];
         if let Some(lang) = detect_language(path) {
             let old = side_spans(lang, &rows, |s| matches!(s, Side::Old | Side::Both));
@@ -219,11 +233,25 @@ impl Highlighter {
                 }
             }
         }
-        Self { rows: out }
+        let tail = out.split_off(rows.len() - after.len());
+        let body = out.split_off(before.len());
+        Self {
+            before: out,
+            rows: body,
+            after: tail,
+        }
     }
 
     pub fn spans(&self, row: usize) -> &[Span] {
         self.rows.get(row).map_or(&[], Vec::as_slice)
+    }
+
+    pub fn before_spans(&self, i: usize) -> &[Span] {
+        self.before.get(i).map_or(&[], Vec::as_slice)
+    }
+
+    pub fn after_spans(&self, i: usize) -> &[Span] {
+        self.after.get(i).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -369,5 +397,22 @@ mod tests {
         let h = Highlighter::for_hunk("a.rs", &format!("+{text}\n"));
         let strs = texts(text, h.spans(0), Class::String);
         assert_eq!(strs, ["\"héllo → ✓\""]);
+    }
+
+    #[test]
+    fn context_rows_join_the_new_side_document() {
+        let plain = Highlighter::for_hunk("a.rs", "+ fn x() {}\n");
+        assert!(!texts(" fn x() {}", plain.spans(0), Class::Keyword).is_empty());
+        let h = Highlighter::with_context("a.rs", "+ fn x() {}\n", &["/* open"], &["*/"]);
+        assert!(texts(" fn x() {}", h.spans(0), Class::Keyword).is_empty());
+        assert_eq!(
+            texts(" fn x() {}", h.spans(0), Class::Comment),
+            [" fn x() {}"]
+        );
+        assert_eq!(
+            texts("/* open", h.before_spans(0), Class::Comment),
+            ["/* open"]
+        );
+        assert_eq!(texts("*/", h.after_spans(0), Class::Comment), ["*/"]);
     }
 }

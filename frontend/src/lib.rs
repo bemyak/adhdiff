@@ -17,7 +17,7 @@ use wasm_bindgen::closure::Closure;
 
 use state::{
     AppState, DEFAULT_ZOOM, DragState, WheelTick, advance_after_viewed, decide_wheel_focus,
-    derive_focus, hunk_identity, step_commented, step_visible, zoom_in, zoom_out,
+    derive_focus, hunk_identity, scroll_top_for, step_commented, step_visible, zoom_in, zoom_out,
 };
 
 const KEYMAP_HELP: &str = include_str!("help.txt");
@@ -140,6 +140,34 @@ fn install(state: AppState) {
     // composer's span afterwards. The effect owns .line-in-range and
     // .line-composing end to end; with neither active every mark is wiped.
     Effect::new(move |_| paint_range(state));
+
+    // One-shot row scroll for an entry whose body was not loaded at
+    // navigation time: retried whenever a body lands, past the fold pass.
+    Effect::new(move |_| {
+        state.bodies.track();
+        let focused = state.focused.get();
+        let Some((oi, _)) = state.pending_scroll.get() else {
+            return;
+        };
+        if oi != focused {
+            state.pending_scroll.set(None);
+            return;
+        }
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let cb = Closure::once_into_js(move || {
+            if state
+                .pending_scroll
+                .get_untracked()
+                .is_some_and(|(p, _)| p == oi)
+                && scroll_focus_into_view(oi)
+            {
+                state.pending_scroll.set(None);
+            }
+        });
+        let _ = window.request_animation_frame(cb.unchecked_ref());
+    });
 
     // Help dialog focus discipline: stash the invoker on open and move
     // focus into the dialog (effects run after the render flush, so the
@@ -442,6 +470,7 @@ fn install_wheel(state: AppState, document: &web_sys::Document) {
             if !in_detail {
                 return;
             }
+            state.pending_scroll.set(None);
             delta.set(delta.get() + ev.delta_y());
             if !pending.replace(true)
                 && let Some(window) = web_sys::window()
@@ -512,6 +541,12 @@ fn install_scroll(
             else {
                 return;
             };
+            if state
+                .pending_scroll
+                .with_untracked(|p| p.is_some_and(|(_, top)| top != pane.scroll_top()))
+            {
+                state.pending_scroll.set(None);
+            }
             // Only the burst's first event touches the class; the flag also
             // idles fold.rs's hover handlers until the debounce fires.
             if !scroll_active.replace(true) {
@@ -544,7 +579,7 @@ fn install_scroll(
 }
 
 /// The scrollable detail pane.
-fn detail_pane() -> Option<web_sys::Element> {
+pub(crate) fn detail_pane() -> Option<web_sys::Element> {
     web_document().and_then(|d| d.query_selector(".detail").ok().flatten())
 }
 
@@ -1034,23 +1069,69 @@ fn head_in_upper_pane(oi: usize) -> bool {
     (0.0..=pane_rect.height() / 2.0).contains(&top)
 }
 
-/// Scroll effect: reads `focused`'s target, never writes it. Hunk head goes
-/// to the pane top (`scroll-margin-top` offsets it), outline row to the
-/// nearest edge so the sidebar doesn't jump.
-pub fn scroll_focus_into_view(oi: usize) {
-    let Some(document) = web_document() else {
+/// Scroll the pane so `target` sits one third of the viewport down;
+/// smooth only when `smooth` and the platform allows motion.
+pub fn scroll_pane_to(target: &web_sys::Element, smooth: bool) {
+    let Some(pane) = detail_pane() else {
         return;
     };
-    if let Ok(Some(head)) = document.query_selector(&format!("#hunk-{oi} .hunk-head")) {
-        let opts = web_sys::ScrollIntoViewOptions::new();
-        opts.set_block(web_sys::ScrollLogicalPosition::Start);
-        head.scroll_into_view_with_scroll_into_view_options(&opts);
+    let target_top = target.get_bounding_client_rect().top()
+        - pane.get_bounding_client_rect().top()
+        + f64::from(pane.scroll_top());
+    let opts = web_sys::ScrollToOptions::new();
+    opts.set_top(scroll_top_for(
+        target_top,
+        f64::from(pane.client_height()),
+        f64::from(pane.scroll_height()),
+    ));
+    opts.set_behavior(if smooth && !reduced_motion() {
+        web_sys::ScrollBehavior::Smooth
+    } else {
+        web_sys::ScrollBehavior::Auto
+    });
+    pane.scroll_to_with_scroll_to_options(&opts);
+}
+
+/// Scroll effect: reads `focused`'s target, never writes it. The entry's
+/// first body row (unfolded first when hidden) goes a third down the pane;
+/// the hunk head stands in while the body is missing or collapsed. Outline
+/// row to the nearest edge so the sidebar doesn't jump. Returns false while
+/// the row is still pending on its body.
+pub fn scroll_focus_into_view(oi: usize) -> bool {
+    let Some(document) = web_document() else {
+        return true;
+    };
+    let mut landed = true;
+    if let Ok(Some(article)) = document.query_selector(&format!("#hunk-{oi}")) {
+        let row = article
+            .get_attribute("data-nav-row")
+            .filter(|_| !article.class_list().contains("collapsed"))
+            .and_then(|r| {
+                article
+                    .query_selector(&format!(".hunk-body [data-row='{r}']"))
+                    .ok()
+                    .flatten()
+            });
+        let target = match row {
+            Some(row) => {
+                fold::expand_run(&row);
+                Some(row)
+            }
+            None => {
+                landed = article.class_list().contains("collapsed");
+                article.query_selector(".hunk-head").ok().flatten()
+            }
+        };
+        if let Some(target) = target {
+            scroll_pane_to(&target, false);
+        }
     }
     if let Ok(Some(item)) = document.query_selector(&format!(".outline-item[data-idx='{oi}']")) {
         let opts = web_sys::ScrollIntoViewOptions::new();
         opts.set_block(web_sys::ScrollLogicalPosition::Nearest);
         item.scroll_into_view_with_scroll_into_view_options(&opts);
     }
+    landed
 }
 
 /// Post-flush [`scroll_focus_into_view`]. Collapse-triggering actions
@@ -1063,7 +1144,7 @@ pub fn defer_scroll_focus_into_view(oi: usize) {
     let Some(window) = web_sys::window() else {
         return;
     };
-    let cb = Closure::once_into_js(move || scroll_focus_into_view(oi));
+    let cb = Closure::once_into_js(move || _ = scroll_focus_into_view(oi));
     let _ = window.request_animation_frame(cb.unchecked_ref());
 }
 

@@ -233,6 +233,32 @@ fn refold_all(state: AppState, max_tier: u8) {
     }
 }
 
+/// Unfold the run `row` is hidden in: drop `fold-hidden` from the whole
+/// contiguous run and remove its seam. The next refold re-plans it.
+pub fn expand_run(row: &web_sys::Element) {
+    if !row.class_list().contains("fold-hidden") {
+        return;
+    }
+    let mut first = row.clone();
+    while let Some(prev) = first
+        .previous_element_sibling()
+        .filter(|p| p.class_list().contains("fold-hidden"))
+    {
+        first = prev;
+    }
+    if let Some(seam) = first
+        .previous_element_sibling()
+        .filter(|p| p.class_list().contains("fold-seam"))
+    {
+        seam.remove();
+    }
+    let mut cur = Some(first);
+    while let Some(el) = cur.filter(|el| el.class_list().contains("fold-hidden")) {
+        let _ = el.class_list().remove_1("fold-hidden");
+        cur = el.next_element_sibling();
+    }
+}
+
 /// One body's fold pass. Idempotent: the previous pass's seams and hides
 /// are stripped before re-planning (bodies are also re-injected wholesale
 /// on comment merges; tier changes re-plan over the same live rows).

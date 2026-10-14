@@ -110,6 +110,8 @@ test, or derive from another entry: `"supports": <row_start>` — the
   row, no gaps and no overlaps, and no entry crosses into another hunk —
   `check` errors otherwise. Deleted rows and `\ No newline` rows count.
   One whole-hunk entry is the valid degenerate tiling.
+  Split a hunk only where the tier changes; adjacent segments of the same
+  tier are one entry with one label.
 - **Decompose by RANGE, not per line.** Wide spans for mechanical runs
   (generated code, rename sweeps), narrow spans for load-bearing logic; tier
   each segment separately. A single segment >150 rows only with

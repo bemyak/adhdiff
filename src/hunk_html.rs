@@ -2,14 +2,18 @@
 //! layer: returns plain `String`s of the exact line-div markup the
 //! frontend CSS targets, syntax-highlighted via `highlight`.
 
+use crate::context::{ExtraCtx, FileLines, extra_context, texts};
 use crate::diff::{RawHunk, find_raw_for};
 use crate::highlight::{Highlighter, Span};
 use crate::state::{Inner, row_pins_for};
 
 /// The body of the raw hunk containing diff row `row`, rendered.
-pub fn render_hunk_body_html(g: &Inner, row: u32) -> String {
+pub fn render_hunk_body_html(g: &Inner, row: u32, files: &mut FileLines) -> String {
     match find_raw_for(&g.files, row) {
-        Some((f, raw)) => render_raw_hunk_html(g, f.path(), raw),
+        Some((f, raw)) => {
+            let extra = extra_context(g, f, raw, files);
+            render_raw_hunk_html(g, f.path(), raw, &extra)
+        }
         None => "(hunk body unavailable)".into(),
     }
 }
@@ -22,12 +26,24 @@ pub fn render_hunk_body_html(g: &Inner, row: u32) -> String {
 /// baked into row markup: every row belonging to segment `i` carries
 /// `seg-p{tier}` + `data-seg="i"`, and each segment's first row also
 /// carries `seg-start`. Rows no segment covers (stale maps) get neither.
-pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk) -> String {
-    let hl = Highlighter::for_hunk(file_key, &raw.body);
+///
+/// `extra` rows (worktree context outside the diff) render as dimmed
+/// `ctx-extra` divs above and below, carrying only `data-oline`: no
+/// `data-row`/`data-dline`, so no gesture or fold pass ever sees them.
+pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk, extra: &ExtraCtx) -> String {
+    let hl = Highlighter::with_context(
+        file_key,
+        &raw.body,
+        &texts(&extra.before),
+        &texts(&extra.after),
+    );
     let ranges = row_pins_for(g, file_key);
     // Start-sorted tiling of this raw hunk's rows.
     let segs = g.map.segments_in(raw.row_start, raw.row_end);
     let mut buf = String::from(r#"<pre class="hunk-body">"#);
+    for (i, (n, text)) in extra.before.iter().enumerate() {
+        buf.push_str(&extra_row_html(*n, text, hl.before_spans(i)));
+    }
     let mut new_line_no = raw.new_start;
     let mut old_line_no = if raw.old_start > 0 { raw.old_start } else { 0 };
     // Segment cursor: `next_seg` is the first segment not yet passed.
@@ -98,8 +114,18 @@ pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk) -> String 
             inner_html
         ));
     }
+    for (i, (n, text)) in extra.after.iter().enumerate() {
+        buf.push_str(&extra_row_html(*n, text, hl.after_spans(i)));
+    }
     buf.push_str("</pre>");
     buf
+}
+
+fn extra_row_html(line: u32, text: &str, spans: &[Span]) -> String {
+    format!(
+        r#"<div class="ctx-extra" data-oline="{line}"><span class="rt">{}</span></div>"#,
+        spans_html(text, spans)
+    )
 }
 
 fn spans_html(text: &str, spans: &[Span]) -> String {
@@ -153,6 +179,7 @@ mod tests {
             workdir_hint: None,
             editor: None,
             body_cache: HashMap::new(),
+            context: 0,
         }
     }
 
@@ -170,7 +197,7 @@ mod tests {
     fn segment_classes_bake_into_demo_rows() {
         let g = demo_inner();
         let (_, raw) = find_raw_for(&g.files, 6).unwrap();
-        let html = render_raw_hunk_html(&g, "src/big.rs", raw);
+        let html = render_raw_hunk_html(&g, "src/big.rs", raw, &ExtraCtx::default());
 
         // First row of the hunk opens segment 0 (P5, rows 6-145).
         let first = row_for(&html, r#"data-row="6""#);
@@ -222,7 +249,7 @@ mod tests {
             body: "-gone one\n-gone two\n".into(),
             header: "@@ -7,3 +6,0 @@".into(),
         };
-        let html = render_raw_hunk_html(&g, "gone.rs", &raw);
+        let html = render_raw_hunk_html(&g, "gone.rs", &raw, &ExtraCtx::default());
         assert!(html.contains("line-del"));
         assert!(html.contains(r#"data-row="20""#) && html.contains(r#"data-row="21""#));
         assert!(!html.contains("seg-p"), "{html}");
@@ -246,7 +273,7 @@ mod tests {
                 ts_unix: 0,
             }],
         );
-        let html = render_hunk_body_html(&g, 190);
+        let html = render_hunk_body_html(&g, 190, &mut FileLines::new());
         let del = row_for(&html, r#"data-row="193""#);
         assert!(
             del.contains("line-del") && del.contains("line-commented"),
@@ -272,7 +299,7 @@ mod tests {
                 body: body.into(),
                 header: "@@ -0,0 +1,3 @@".into(),
             };
-            let html = render_raw_hunk_html(&g, file, &raw);
+            let html = render_raw_hunk_html(&g, file, &raw, &ExtraCtx::default());
             for bad in ["<script", "<img"] {
                 assert!(!html.contains(bad), "{file}: {bad} unescaped in {html}");
             }
@@ -298,7 +325,7 @@ mod tests {
             body: "+let s = \"héllo → ✓\";\n".into(),
             header: "@@ -0,0 +1 @@".into(),
         };
-        let html = render_raw_hunk_html(&g, "a.rs", &raw);
+        let html = render_raw_hunk_html(&g, "a.rs", &raw, &ExtraCtx::default());
         assert!(html.contains("&quot;héllo → ✓&quot;"), "{html}");
         assert!(html.contains("hl-string"), "{html}");
     }
@@ -310,11 +337,47 @@ mod tests {
         // emptiness. Every generated body row must carry exactly one.
         let g = demo_inner();
         let (_, raw) = find_raw_for(&g.files, 6).unwrap();
-        let html = render_raw_hunk_html(&g, "src/big.rs", raw);
+        let html = render_raw_hunk_html(&g, "src/big.rs", raw, &ExtraCtx::default());
         let rows = html.matches(r#"data-dline=""#).count();
         assert!(rows > 0);
         assert_eq!(html.matches(r#"<span class="rt">"#).count(), rows);
         assert_eq!(html.matches("</span></div>").count(), rows);
         assert_eq!(html.matches(r#"data-row=""#).count(), rows);
+    }
+
+    #[test]
+    fn extra_rows_are_dim_highlighted_and_outside_the_row_tiling() {
+        let g = demo_inner();
+        let raw = RawHunk {
+            old_start: 5,
+            old_end: 5,
+            new_start: 5,
+            new_end: 5,
+            row_start: 20,
+            row_end: 20,
+            body: "+let x = 1;\n".into(),
+            header: "@@ -4,0 +5 @@".into(),
+        };
+        let extra = ExtraCtx {
+            before: vec![(4, "fn main() {".into())],
+            after: vec![(6, "}".into()), (7, "// <end>".into())],
+        };
+        let html = render_raw_hunk_html(&g, "a.rs", &raw, &extra);
+        let first = row_for(&html, "fn");
+        assert!(
+            first.starts_with(r#"<div class="ctx-extra" data-oline="4">"#),
+            "{first}"
+        );
+        assert!(
+            first.contains(r#"<span class="hl-keyword">fn</span>"#),
+            "{first}"
+        );
+        assert_eq!(html.matches(r#"class="ctx-extra""#).count(), 3);
+        assert_eq!(html.matches(r#"data-dline=""#).count(), 1);
+        assert_eq!(html.matches(r#"data-row=""#).count(), 1);
+        assert!(html.contains(r#"data-dline="0" data-row="20""#), "{html}");
+        assert!(html.contains("// &lt;end&gt;"), "{html}");
+        let body = html.find("data-dline").unwrap();
+        assert!(html.find("ctx-extra").unwrap() < body && html.rfind("ctx-extra").unwrap() > body);
     }
 }

@@ -1,5 +1,6 @@
 mod app;
 mod check;
+mod context;
 mod diff;
 mod editor;
 mod enrich;
@@ -105,6 +106,9 @@ enum Cmd {
         /// file. Default: $XDG_STATE_HOME/adhdiff/<worktree-hash>/<sha12>.json.
         #[arg(long)]
         out: Option<String>,
+        /// Worktree lines shown dimmed above and below every hunk (0 = off).
+        #[arg(long, default_value_t = 5)]
+        context: u32,
     },
     /// Desktop window (Tauri + Leptos): the full-page review surface,
     /// rendered in a local webview shell. Refuses a map whose diff_sha256
@@ -121,6 +125,9 @@ enum Cmd {
         /// file. Default: $XDG_STATE_HOME/adhdiff/<worktree-hash>/<sha12>.json.
         #[arg(long)]
         out: Option<String>,
+        /// Worktree lines shown dimmed above and below every hunk (0 = off).
+        #[arg(long, default_value_t = 5)]
+        context: u32,
     },
     /// Inbox: pending reviewer commands/asks. An agent polls this between
     /// turns to react to human feedback without keeping a socket open.
@@ -228,17 +235,19 @@ fn main() -> Result<()> {
             map,
             diff_file,
             out,
+            context,
         } => {
             let (map, diff) = read_pair(map.as_deref(), None, Some(diff_file))?;
-            tui::run_tui(map, &diff, out)?;
+            tui::run_tui(map, &diff, out, context)?;
         }
         Cmd::Gui {
             map,
             diff_file,
             out,
+            context,
         } => {
             let (map, diff) = read_pair(map.as_deref(), None, Some(diff_file))?;
-            app::run_app(map, &diff, out)?;
+            app::run_app(map, &diff, out, context)?;
         }
         Cmd::Inbox {
             peek,

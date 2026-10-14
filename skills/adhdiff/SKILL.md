@@ -138,6 +138,8 @@ the map; `supports` is the `row_start` of another entry.
   `[row_start, row_end]` spans cover it exactly — first entry starts at the
   hunk's first row, last ends at its last row, no gaps, no overlaps. One
   whole-hunk entry is the valid degenerate tiling.
+  Split a hunk only where the tier changes; adjacent segments of the same
+  tier are one entry with one label.
 - Decompose by range, not per line: wide spans for mechanical runs, narrow
   spans for load-bearing logic. A span over 150 rows needs
   `mechanical: true`.
@@ -150,8 +152,8 @@ zero files, `row_start` 0 or `row_end` < `row_start`, an entry spanning more
 than one raw hunk, a hunk not tiled exactly, a duplicate `row_start`, a
 dangling or cyclic `supports`, a P0 without rationale. It warns on spans
 > 150 rows without `mechanical`, tiny segments inside large hunks, more
-than a quarter of the entries being P0, and low-confidence P5–P7 entries
-(an error under `--strict`). When check fails, fix `map.json` and
+than a quarter of the entries being P0, adjacent same-tier segments in one
+hunk, and low-confidence P5–P7 entries (an error under `--strict`). When check fails, fix `map.json` and
 re-check; `change.diff` is content-addressed input — never edit it.
 
 - `parse`, `enrich`, `prompt`, and `check --map` all read stdin when their
@@ -178,16 +180,17 @@ re-check; `change.diff` is content-addressed input — never edit it.
 
 Your job ends at a valid `map.json`; the human picks the surface:
 
-- `adhdiff gui --map map.json --diff-file change.diff [--out PATH]` —
+- `adhdiff gui --map map.json --diff-file change.diff [--out PATH] [--context N]` —
   desktop UI (Tauri + Leptos webview): the full-page review surface.
-- `adhdiff tui --map map.json --diff-file change.diff [--out PATH]` —
+- `adhdiff tui --map map.json --diff-file change.diff [--out PATH] [--context N]` —
   interactive TUI: priority outline, detail panes, comments.
 - `adhdiff render --map map.json --diff-file change.diff` — one-shot
   terminal render, good for piping to `$PAGER`.
 
 `gui`, `tui` and `render` refuse to start when the map's `diff_sha256` does
 not match the diff. `gui` and `tui` require `--diff-file` (map may come via
-stdin). `--out PATH`: if PATH is an existing directory or ends with `/`, the
+stdin). `--context N`: dimmed worktree lines
+shown around each hunk (default 5, `0` = off). `--out PATH`: if PATH is an existing directory or ends with `/`, the
 state file is `PATH/<sha12>.json`; otherwise PATH is the state file itself.
 Open-in-editor jumps resolve `$VISUAL`, then `$EDITOR` in the GUI and `$EDITOR`, then `$VISUAL`, else `vi` in the TUI; the GUI button is hidden when no usable editor is configured or the file is not in the worktree.
 

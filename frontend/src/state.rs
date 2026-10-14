@@ -46,6 +46,11 @@ pub struct AppState {
     pub composer_busy: RwSignal<bool>,
     /// Last composer add/delete error, shown under the textarea.
     pub composer_error: RwSignal<Option<String>>,
+    /// Entry whose first row still has to be scrolled to once its body
+    /// lands, with the pane `scrollTop` the navigation left behind;
+    /// one-shot, dropped by the effect in lib.rs that performs it or by a
+    /// user scroll / focus move.
+    pub pending_scroll: RwSignal<Option<(usize, i32)>>,
     /// Native webview zoom factor. Written only by the keydown handler's
     /// zoom chords (constructor seeds it from localStorage); the apply
     /// effect in lib.rs reads it. Never reads or writes `focused`.
@@ -162,6 +167,7 @@ impl AppState {
             failed: RwSignal::new(HashSet::new()),
             composer_busy: RwSignal::new(false),
             composer_error: RwSignal::new(None),
+            pending_scroll: RwSignal::new(None),
             zoom: RwSignal::new(zoom_seed()),
             visible,
             tiers,
@@ -176,7 +182,16 @@ impl AppState {
     pub fn key_focus(&self, oi: usize) {
         self.clear_failed(oi);
         self.focused.set(oi);
-        crate::scroll_focus_into_view(oi);
+        self.navigate(oi);
+    }
+
+    /// Scroll to entry `oi`'s first row; when its body has not landed yet
+    /// the head is shown meanwhile and the row scroll is left pending.
+    pub fn navigate(&self, oi: usize) {
+        if !crate::scroll_focus_into_view(oi) {
+            let top = crate::detail_pane().map_or(0, |p| p.scroll_top());
+            self.pending_scroll.set(Some((oi, top)));
+        }
     }
 
     /// `focused` writer 2 of 3 — the click handler (hunk cards, outline
@@ -219,6 +234,22 @@ impl AppState {
         }
         self.announce.set(msg);
     }
+}
+
+/// Row an outline entry navigates to: the first row of its strongest
+/// segment (earliest on ties), the raw hunk's first row without segments.
+pub fn entry_target_row(row_start: u32, segments: &[SegmentPayload]) -> u32 {
+    segments
+        .iter()
+        .min_by_key(|s| (s.tier, s.row_start))
+        .map_or(row_start, |s| s.row_start)
+}
+
+/// `scrollTop` that puts a target `target_top` px down the pane's scroll
+/// space one third of the viewport from the top, clamped to the scrollable
+/// range.
+pub fn scroll_top_for(target_top: f64, client_height: f64, scroll_height: f64) -> f64 {
+    (target_top - client_height / 3.0).clamp(0.0, (scroll_height - client_height).max(0.0))
 }
 
 pub fn hunk_identity(file: &str, row_start: u32) -> String {
@@ -583,6 +614,28 @@ pub fn find_overlap<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn entry_target_is_the_strongest_segments_first_row() {
+        let seg = |row_start, tier| SegmentPayload {
+            row_start,
+            row_end: row_start + 5,
+            tier,
+            label: String::new(),
+            rationale: String::new(),
+        };
+        let segs = [seg(10, 6), seg(20, 1), seg(30, 0), seg(40, 0), seg(50, 1)];
+        assert_eq!(entry_target_row(10, &segs), 30);
+        assert_eq!(entry_target_row(10, &[]), 10);
+    }
+
+    #[test]
+    fn scroll_top_sits_a_third_down_and_clamps() {
+        assert_eq!(scroll_top_for(1000.0, 600.0, 5000.0), 800.0);
+        assert_eq!(scroll_top_for(100.0, 600.0, 5000.0), 0.0);
+        assert_eq!(scroll_top_for(4900.0, 600.0, 5000.0), 4400.0);
+        assert_eq!(scroll_top_for(300.0, 600.0, 400.0), 0.0);
+    }
 
     #[test]
     fn derive_focus_empty_is_none() {

@@ -16,6 +16,7 @@ use adhdiff_shared::{
     SegmentPayload,
 };
 
+use crate::context::FileLines;
 use crate::diff::{FileDiff, find_raw_for};
 use crate::hunk_html::render_hunk_body_html;
 use crate::state::{Inner, comments_at};
@@ -293,12 +294,16 @@ pub fn outline_position(g: &Inner, mi: usize) -> Option<usize> {
 /// comment mutation on the file invalidates it.
 /// `mi` may name any entry of the hunk — segment or anchor alike.
 pub fn hunk_body(g: &mut Inner, mi: usize, oi: usize) -> Option<HunkBody> {
+    hunk_body_in(g, mi, oi, &mut FileLines::new())
+}
+
+fn hunk_body_in(g: &mut Inner, mi: usize, oi: usize, files: &mut FileLines) -> Option<HunkBody> {
     let gr = payload_groups(g)
         .into_iter()
         .find(|gr| gr.members.contains(&mi))?;
     let anchor_mi = gr.anchor;
     if !g.body_cache.contains_key(&anchor_mi) {
-        let html = render_hunk_body_html(g, gr.span.0);
+        let html = render_hunk_body_html(g, gr.span.0, files);
         g.body_cache.insert(anchor_mi, html);
     }
     let body_html = g.body_cache.get(&anchor_mi)?.clone();
@@ -319,9 +324,10 @@ pub fn file_bodies(g: &mut Inner, file: &str) -> FileBodies {
         .filter(|(_, gr)| gr.file == file)
         .map(|(oi, gr)| (gr.anchor, oi))
         .collect();
+    let mut files = FileLines::new();
     let bodies = pairs
         .into_iter()
-        .filter_map(|(mi, oi)| hunk_body(g, mi, oi))
+        .filter_map(|(mi, oi)| hunk_body_in(g, mi, oi, &mut files))
         .collect();
     FileBodies {
         file: file.to_string(),
@@ -454,6 +460,7 @@ mod tests {
             workdir_hint: None,
             editor: None,
             body_cache: Default::default(),
+            context: 0,
         };
         let payload = map_payload(&g);
         // Six labeled entries, three articles: the entries ride inside
@@ -573,6 +580,7 @@ mod tests {
             workdir_hint: None,
             editor: None,
             body_cache: Default::default(),
+            context: 0,
         };
         let payload = map_payload(&g);
         assert_eq!(payload.hunks.len(), 1);

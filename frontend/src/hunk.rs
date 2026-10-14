@@ -12,7 +12,9 @@ use wasm_bindgen::JsCast;
 
 use crate::composer;
 use crate::icons;
-use crate::state::{AppState, advance_after_viewed, hunk_identity, visible_row_estimate};
+use crate::state::{
+    AppState, advance_after_viewed, entry_target_row, hunk_identity, visible_row_estimate,
+};
 use crate::{defer_scroll_focus_into_view, open_in_editor, toggle_viewed, web_document};
 
 #[component]
@@ -42,11 +44,13 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
     let segments = h.segments.clone();
     let (row_start, row_end) = (h.row_start, h.row_end);
     let ctx = (h.ctx_head, h.ctx_tail);
+    let nav_row = entry_target_row(h.row_start, &h.segments);
     let loc = format!("{} rows {}–{}", h.file, h.row_start, h.row_end);
 
     view! {
         <article
             id=format!("hunk-{oi}")
+            data-nav-row=nav_row
             class=format!("hunk tier-p{tier}-bg-deemph")
             class:focused=move || state.focused.get() == oi
             class:collapsed=move || state.collapsed.with(|c| c.contains(&map_idx))
@@ -260,8 +264,7 @@ fn reopen_comment(state: AppState, oi: usize, map_idx: usize, file: String, star
     composer::open_composer(state, oi, file, start, None, anchor_dline);
 }
 
-/// Center the comment's start row in the pane (smooth, like the old row
-/// click) and return its dline so the composer anchors under it.
+/// Scroll the comment's start row a third down the pane (smooth) and return its dline so the composer anchors under it.
 fn comment_scroll_and_anchor(oi: usize, start: u32) -> Option<u32> {
     let document = web_document()?;
     let row = document
@@ -269,13 +272,6 @@ fn comment_scroll_and_anchor(oi: usize, start: u32) -> Option<u32> {
         .ok()
         .flatten()?;
     let dline = row.get_attribute("data-dline").and_then(|d| d.parse().ok());
-    let opts = web_sys::ScrollIntoViewOptions::new();
-    opts.set_block(web_sys::ScrollLogicalPosition::Center);
-    opts.set_behavior(if crate::reduced_motion() {
-        web_sys::ScrollBehavior::Auto
-    } else {
-        web_sys::ScrollBehavior::Smooth
-    });
-    row.scroll_into_view_with_scroll_into_view_options(&opts);
+    crate::scroll_pane_to(&row, true);
     dline
 }

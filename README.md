@@ -68,6 +68,8 @@ which loads `http://localhost:1420` instead.
 
 The GUI's `e` jump needs a windowed editor (`VISUAL=code` or similar); a terminal editor has no TTY there. The GUI resolves `$VISUAL`, then `$EDITOR`; the TUI `$EDITOR`, then `$VISUAL`, else `vi`. The open button is hidden when no usable editor is configured or the file is not in the worktree.
 
+Both viewers show `--context N` dimmed worktree lines (default 5, `0` disables) above and below every hunk; they are skipped when the file is missing or no longer matches the diff.
+
 ## CLI
 
 ```
@@ -76,8 +78,8 @@ adhdiff enrich  [--input diff] [--workdir dir]                        # inventor
 adhdiff prompt  [--input diff]                                        # diff → full labeling prompt for the agent
 adhdiff check   [--map M] (--diff D | --diff-file F) [--strict]       # validate a map against its diff
 adhdiff render  [--map M] (--diff D | --diff-file F)                  # one-shot terminal render
-adhdiff tui     [--map M] --diff-file F [--out PATH]                  # interactive terminal UI
-adhdiff gui     [--map M] --diff-file F [--out PATH]                  # desktop UI
+adhdiff tui     [--map M] --diff-file F [--out PATH] [--context N]    # interactive terminal UI
+adhdiff gui     [--map M] --diff-file F [--out PATH] [--context N]    # desktop UI
 adhdiff inbox   --peek | --post TEXT [--hunk F:ROW] | --done ID       # agent/reviewer feedback queue
 ```
 

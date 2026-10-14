@@ -52,6 +52,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
+use crate::context::{FileLines, extra_context, texts};
 use crate::diff::{find_raw_for, parse_unified, row_to_new_line};
 use crate::highlight::{Class, Highlighter, Span as HlSpan};
 use crate::state::{self, Inner, comment_key, comments_at, row_pins_for};
@@ -121,6 +122,7 @@ enum RowKind {
     Del,
     Ctx,
     Warn,
+    Extra,
 }
 
 #[derive(Debug, Clone)]
@@ -186,7 +188,11 @@ impl App {
     fn new(inner: Inner) -> Self {
         let groups = crate::outline::raw_groups(&inner.map, &inner.files);
         let parents: Vec<Option<usize>> = groups.iter().map(|g| g.parent).collect();
-        let bodies = groups.iter().map(|gr| hunk_body(&inner, gr)).collect();
+        let mut files = FileLines::new();
+        let bodies = groups
+            .iter()
+            .map(|gr| hunk_body(&inner, gr, &mut files))
+            .collect();
         let max_tier = groups
             .iter()
             .map(|g| g.priority)
@@ -575,13 +581,30 @@ fn cycle_tier(tiers: &[u8], cur: u8) -> Option<u8> {
     Some(tiers[(idx + 1) % tiers.len()])
 }
 
-fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup) -> Vec<BodyRow> {
-    let Some((_, raw)) = find_raw_for(&g.files, gr.span.0) else {
+fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup, files: &mut FileLines) -> Vec<BodyRow> {
+    let Some((f, raw)) = find_raw_for(&g.files, gr.span.0) else {
         return Vec::new();
     };
 
-    let hl = Highlighter::for_hunk(&gr.file, &raw.body);
-    let mut rows: Vec<BodyRow> = Vec::new();
+    let extra = extra_context(g, f, raw, files);
+    let hl = Highlighter::with_context(
+        &gr.file,
+        &raw.body,
+        &texts(&extra.before),
+        &texts(&extra.after),
+    );
+    let extra_row = |n: u32, text: &str, spans: &[HlSpan]| BodyRow {
+        kind: RowKind::Extra,
+        gutter: n.to_string(),
+        row: None,
+        spans: highlight_spans(spans, text),
+    };
+    let mut rows: Vec<BodyRow> = extra
+        .before
+        .iter()
+        .enumerate()
+        .map(|(i, (n, t))| extra_row(*n, t, hl.before_spans(i)))
+        .collect();
     let mut new_line_no = raw.new_start;
     let mut old_line_no = if raw.old_start > 0 { raw.old_start } else { 0 };
     for (i, l) in raw.body.lines().enumerate() {
@@ -617,7 +640,11 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup) -> Vec<BodyRow> {
             spans,
         });
     }
-    let omitted = raw.body.lines().count().saturating_sub(rows.len());
+    let omitted = raw
+        .body
+        .lines()
+        .count()
+        .saturating_sub(rows.len() - extra.before.len());
     if omitted > 0 {
         rows.push(BodyRow {
             kind: RowKind::Warn,
@@ -626,6 +653,13 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup) -> Vec<BodyRow> {
             spans: vec![(format!("… {omitted} more body lines"), col::FG_DIM)],
         });
     }
+    rows.extend(
+        extra
+            .after
+            .iter()
+            .enumerate()
+            .map(|(i, (n, t))| extra_row(*n, t, hl.after_spans(i))),
+    );
     rows
 }
 
@@ -799,7 +833,7 @@ impl Drop for TermRestore {
 }
 
 /// `out` mirrors gui::run_app's param: the sidecar directory or file.
-pub fn run_tui(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<()> {
+pub fn run_tui(map: AdhDiffMap, diff: &[u8], out: Option<String>, context: u32) -> Result<()> {
     // The same splice of parse → sha → reading order → sidecar load that
     // serve's run_serve does.
     let files = parse_unified(diff)?;
@@ -823,6 +857,7 @@ pub fn run_tui(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<()> 
         workdir_hint,
         editor,
         body_cache: Default::default(),
+        context,
     };
     eprintln!(
         "adhdiff tui ({} hunks) — state: {}",
@@ -1330,13 +1365,18 @@ fn draw_detail(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
                             RowKind::Add => "+",
                             RowKind::Del => "-",
                             RowKind::Warn => "\\",
-                            RowKind::Ctx => " ",
+                            RowKind::Ctx | RowKind::Extra => " ",
                         },
                         Style::default().fg(col::FG_DIM),
                     ),
                 ];
                 for (text, fg) in &r.spans {
-                    spans.push(Span::styled(text.clone(), Style::default().fg(*fg)));
+                    let fg = if r.kind == RowKind::Extra {
+                        col::FG_DIM
+                    } else {
+                        *fg
+                    };
+                    spans.push(Span::styled(text.clone(), Style::default().fg(fg)));
                 }
                 let mut line = Line::from(spans);
                 if let Some(bg) = bg {
@@ -1607,6 +1647,7 @@ index 0000000..3333333
             workdir_hint: None,
             editor: None,
             body_cache: Default::default(),
+            context: 0,
         };
         (App::new(inner), dir)
     }
@@ -1944,6 +1985,7 @@ index 0000000..3333333
             workdir_hint: None,
             editor: None,
             body_cache: Default::default(),
+            context: 0,
         };
         let map_entries = inner.map.hunks.len();
         let app = App::new(inner);

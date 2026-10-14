@@ -45,6 +45,8 @@ pub struct Inner {
     /// get_file_bodies on first request. Pins are baked into the markup,
     /// so comment mutations drop the file's entries.
     pub body_cache: HashMap<usize, String>,
+    /// Worktree lines shown above and below each hunk; 0 disables.
+    pub context: u32,
 }
 
 /// The git/jj worktree containing cwd — the nearest ancestor holding a
@@ -455,6 +457,7 @@ mod tests {
             workdir_hint: None,
             editor: None,
             body_cache: HashMap::new(),
+            context: 0,
         };
         persist_sidecar(&g).unwrap();
         let (comments, viewed, _, warn) = load(SHA, Some(path.to_str().unwrap()), None).unwrap();
