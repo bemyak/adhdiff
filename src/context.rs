@@ -12,6 +12,8 @@ use crate::state::Inner;
 pub struct ExtraCtx {
     pub before: Vec<(u32, String)>,
     pub after: Vec<(u32, String)>,
+    pub at_bof: bool,
+    pub at_eof: bool,
 }
 
 /// Worktree files already read during one request, by diff path; `None`
@@ -120,6 +122,8 @@ pub fn extra_context(g: &Inner, f: &FileDiff, raw: &RawHunk, cache: &mut FileLin
     ExtraCtx {
         before: take(first - nb..first),
         after: take(last + 1..last + 1 + na),
+        at_bof: first - nb <= 1,
+        at_eof: last + na >= lines.len() as u32,
     }
 }
 
@@ -217,6 +221,7 @@ mod tests {
         assert_eq!(numbers(&e.after), (24..=33).collect::<Vec<_>>());
         assert_eq!(e.before[0].1, "line 7");
         assert_eq!(e.after[9].1, "line 33");
+        assert!(!e.at_bof && !e.at_eof);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -226,6 +231,7 @@ mod tests {
         let e = &extras(&g)[0];
         assert!(e.before.is_empty());
         assert_eq!(numbers(&e.after), (6..=15).collect::<Vec<_>>());
+        assert!(e.at_bof && !e.at_eof);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -235,6 +241,7 @@ mod tests {
         let e = &extras(&g)[0];
         assert_eq!(numbers(&e.before), (21..=30).collect::<Vec<_>>());
         assert_eq!(numbers(&e.after), vec![38, 39, 40]);
+        assert!(e.at_eof && !e.at_bof);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -291,6 +298,14 @@ mod tests {
         g.context = 10;
         g.workdir_hint = None;
         assert_eq!(extras(&g)[0], ExtraCtx::default());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn zero_context_has_no_edge_markers() {
+        let (mut g, dir) = setup("zero", 40, &[2, 38]);
+        g.context = 0;
+        assert!(extras(&g).iter().all(|e| *e == ExtraCtx::default()));
         let _ = std::fs::remove_dir_all(dir);
     }
 

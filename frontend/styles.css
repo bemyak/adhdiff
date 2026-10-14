@@ -214,6 +214,8 @@ pre.hunk-body::selection, .hunk-body > div::selection { background: transparent;
 .line-warn { color: var(--p1); }
 .hunk-body > .ctx-extra { opacity: 0.55; }
 .hunk-body > .ctx-extra::before { cursor: default; }
+.hunk-body > .ctx-edge { color: var(--fg-dim); font-size: 11px; font-style: italic; user-select: none; cursor: default; }
+.hunk-body > .ctx-edge::before { content: none; }
 
 /* Comment pin: 6px accent band in the free gap between the number gutter
    (ends at 38px) and the code content (padding-left:50px): x=42-48.

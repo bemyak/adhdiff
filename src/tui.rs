@@ -599,12 +599,25 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup, files: &mut FileLines) ->
         row: None,
         spans: highlight_spans(spans, text),
     };
+    let edge_row = |text: &str| BodyRow {
+        kind: RowKind::Extra,
+        gutter: String::new(),
+        row: None,
+        spans: vec![(text.to_string(), col::FG_DIM)],
+    };
     let mut rows: Vec<BodyRow> = extra
-        .before
-        .iter()
-        .enumerate()
-        .map(|(i, (n, t))| extra_row(*n, t, hl.before_spans(i)))
+        .at_bof
+        .then(|| edge_row("start of file"))
+        .into_iter()
         .collect();
+    rows.extend(
+        extra
+            .before
+            .iter()
+            .enumerate()
+            .map(|(i, (n, t))| extra_row(*n, t, hl.before_spans(i))),
+    );
+    let lead = rows.len();
     let mut new_line_no = raw.new_start;
     let mut old_line_no = if raw.old_start > 0 { raw.old_start } else { 0 };
     for (i, l) in raw.body.lines().enumerate() {
@@ -640,11 +653,7 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup, files: &mut FileLines) ->
             spans,
         });
     }
-    let omitted = raw
-        .body
-        .lines()
-        .count()
-        .saturating_sub(rows.len() - extra.before.len());
+    let omitted = raw.body.lines().count().saturating_sub(rows.len() - lead);
     if omitted > 0 {
         rows.push(BodyRow {
             kind: RowKind::Warn,
@@ -660,6 +669,9 @@ fn hunk_body(g: &Inner, gr: &crate::outline::RawGroup, files: &mut FileLines) ->
             .enumerate()
             .map(|(i, (n, t))| extra_row(*n, t, hl.after_spans(i))),
     );
+    if extra.at_eof {
+        rows.push(edge_row("end of file"));
+    }
     rows
 }
 

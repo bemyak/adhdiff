@@ -41,6 +41,9 @@ pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk, extra: &Ex
     // Start-sorted tiling of this raw hunk's rows.
     let segs = g.map.segments_in(raw.row_start, raw.row_end);
     let mut buf = String::from(r#"<pre class="hunk-body">"#);
+    if extra.at_bof {
+        buf.push_str(r#"<div class="ctx-edge">start of file</div>"#);
+    }
     for (i, (n, text)) in extra.before.iter().enumerate() {
         buf.push_str(&extra_row_html(*n, text, hl.before_spans(i)));
     }
@@ -116,6 +119,9 @@ pub fn render_raw_hunk_html(g: &Inner, file_key: &str, raw: &RawHunk, extra: &Ex
     }
     for (i, (n, text)) in extra.after.iter().enumerate() {
         buf.push_str(&extra_row_html(*n, text, hl.after_spans(i)));
+    }
+    if extra.at_eof {
+        buf.push_str(r#"<div class="ctx-edge">end of file</div>"#);
     }
     buf.push_str("</pre>");
     buf
@@ -361,6 +367,7 @@ mod tests {
         let extra = ExtraCtx {
             before: vec![(4, "fn main() {".into())],
             after: vec![(6, "}".into()), (7, "// <end>".into())],
+            ..ExtraCtx::default()
         };
         let html = render_raw_hunk_html(&g, "a.rs", &raw, &extra);
         let first = row_for(&html, "fn");
@@ -379,5 +386,42 @@ mod tests {
         assert!(html.contains("// &lt;end&gt;"), "{html}");
         let body = html.find("data-dline").unwrap();
         assert!(html.find("ctx-extra").unwrap() < body && html.rfind("ctx-extra").unwrap() > body);
+        assert!(!html.contains("ctx-edge"), "{html}");
+    }
+
+    #[test]
+    fn edge_markers_frame_the_body_without_row_attributes() {
+        let g = demo_inner();
+        let raw = RawHunk {
+            old_start: 1,
+            old_end: 1,
+            new_start: 1,
+            new_end: 1,
+            row_start: 20,
+            row_end: 20,
+            body: "+let x = 1;\n".into(),
+            header: "@@ -0,0 +1 @@".into(),
+        };
+        let marker = |at_bof, at_eof| {
+            let extra = ExtraCtx {
+                at_bof,
+                at_eof,
+                ..ExtraCtx::default()
+            };
+            render_raw_hunk_html(&g, "a.rs", &raw, &extra)
+        };
+        let html = marker(true, false);
+        assert_eq!(html.matches(r#"class="ctx-edge""#).count(), 1);
+        assert!(
+            html.starts_with(r#"<pre class="hunk-body"><div class="ctx-edge">start of file</div>"#),
+            "{html}"
+        );
+        let html = marker(false, true);
+        assert_eq!(html.matches(r#"class="ctx-edge""#).count(), 1);
+        assert!(
+            html.ends_with(r#"<div class="ctx-edge">end of file</div></pre>"#),
+            "{html}"
+        );
+        assert!(!marker(false, false).contains("ctx-edge"));
     }
 }
