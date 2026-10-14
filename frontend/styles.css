@@ -58,7 +58,7 @@ header { background: var(--bg-panel); border-bottom: 1px solid var(--border); pa
    color under a copy inset 1px on the right and bottom. Each path is the
    chip box with one corner replaced by a superellipse quadrant
    (x^4+y^4=r^4 as a cubic bézier; handle 0.909r pins the curve's midpoint
-   to the superellipse's diagonal point) for the 41x40 borderless box (the
+   to the superellipse's diagonal point) for the 49x40 borderless box (the
    .outline-filter height pinned at 40px keeps the silhouette level with the
    expanded header band): r=14 outside, r=13 inside. */
 .outline.closed .outline-filter {
@@ -68,22 +68,22 @@ header { background: var(--bg-panel); border-bottom: 1px solid var(--border); pa
     justify-content: flex-start;
     /* Same box model as the expanded header (10px/12px padding, 1px bottom
        border) so the toggle button keeps its exact position and size;
-       the right padding trims the chip to the 41px silhouette. */
-    padding: 10px 4px 10px 12px;
+       the right padding mirrors the left, making the chip 49px wide. */
+    padding: 10px 12px;
     /* Only the button catches clicks; the rest of the chip footprint
        overlaps the first hunk header and must let events fall through. */
     pointer-events: none;
     border: 0 solid transparent;
     border-bottom-width: 1px;
     background: var(--border);
-    clip-path: path("M0 0 H41 V26 C41 38.728, 39.728 40, 27 40 H0 Z");
+    clip-path: path("M0 0 H49 V26 C49 38.728, 47.728 40, 35 40 H0 Z");
 }
 .outline.closed .outline-filter::before {
     content: "";
     position: absolute;
     inset: 0;
     background: var(--bg-panel);
-    clip-path: path("M0 0 H40 V26 C40 37.819, 38.819 39, 27 39 H0 Z");
+    clip-path: path("M0 0 H48 V26 C48 37.819, 46.819 39, 35 39 H0 Z");
 }
 .outline.closed .outline-filter .panel-toggle {
     position: relative;

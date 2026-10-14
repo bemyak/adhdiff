@@ -41,6 +41,7 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
     let body_rows = h.body_rows;
     let segments = h.segments.clone();
     let (row_start, row_end) = (h.row_start, h.row_end);
+    let ctx = (h.ctx_head, h.ctx_tail);
     let loc = format!("{} rows {}–{}", h.file, h.row_start, h.row_end);
 
     view! {
@@ -141,7 +142,7 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
                 class="body-slot"
                 style=move || {
                     let rows = visible_row_estimate(
-                        &segments, row_start, row_end, body_rows, state.tier.get(),
+                        &segments, row_start, row_end, body_rows, ctx, state.tier.get(),
                     );
                     format!(
                         "content-visibility:auto;\

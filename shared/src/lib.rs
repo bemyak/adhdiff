@@ -398,6 +398,13 @@ pub struct HunkPayload {
     /// empty when the map predates sub-hunk segments.
     #[serde(default)]
     pub segments: Vec<SegmentPayload>,
+    /// Leading ` `-prefixed context rows the raw diff carries; these
+    /// never fold under the tier filter.
+    #[serde(default)]
+    pub ctx_head: u32,
+    /// Trailing context rows of the raw hunk (see `ctx_head`).
+    #[serde(default)]
+    pub ctx_tail: u32,
     pub comments: Vec<SavedComment>,
     pub viewed: bool,
     /// The hunk's file is a regular file under the bound worktree.

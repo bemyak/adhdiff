@@ -225,6 +225,18 @@ fn payload_groups(g: &Inner) -> Vec<RawGroup> {
 /// Segment-level entries surface denormalized in `segments`; everything
 /// hunk-level (priority, label, comments span) is derived here.
 fn group_payload(g: &Inner, gr: &RawGroup, oi: usize) -> HunkPayload {
+    let (ctx_head, ctx_tail) = find_raw_for(&g.files, gr.span.0).map_or((0, 0), |(_, raw)| {
+        let is_ctx = |l: &&str| l.is_empty() || l.starts_with(' ');
+        let head = raw.body.lines().take_while(is_ctx).count();
+        let tail = raw
+            .body
+            .lines()
+            .rev()
+            .skip_while(|l| l.starts_with('\\'))
+            .take_while(is_ctx)
+            .count();
+        (head as u32, tail as u32)
+    });
     let anchor = &g.map.hunks[gr.anchor];
     let label_h = &g.map.hunks[gr.label_idx];
     HunkPayload {
@@ -254,6 +266,8 @@ fn group_payload(g: &Inner, gr: &RawGroup, oi: usize) -> HunkPayload {
                 }
             })
             .collect(),
+        ctx_head,
+        ctx_tail,
         comments: comments_at(g, &gr.file, gr.span.0, gr.span.1),
         viewed: g.viewed.contains(&gr.identity()),
         openable: g.workdir_hint.as_ref().is_some_and(|wd| {
@@ -425,6 +439,61 @@ mod tests {
         assert_eq!(changelog.priority, Priority::P4);
         assert_eq!(changelog.segments.len(), 1);
         assert_eq!(changelog.members.len(), 1);
+    }
+
+    #[test]
+    fn demo_payload_ships_one_hunk_per_raw_hunk_with_nested_segments() {
+        let (map, files) = demo();
+        let g = Inner {
+            map,
+            files,
+            comments: Default::default(),
+            viewed: Default::default(),
+            state_path: "/tmp/unused.json".into(),
+            diff_sha: "0".repeat(16),
+            workdir_hint: None,
+            editor: None,
+            body_cache: Default::default(),
+        };
+        let payload = map_payload(&g);
+        // Six labeled entries, three articles: the entries ride inside
+        // their raw hunk's `segments`, never as hunks of their own.
+        assert_eq!(payload.hunks.len(), 3);
+        assert_eq!(payload.outline.len(), 3);
+        let shape: Vec<_> = payload
+            .hunks
+            .iter()
+            .map(|h| {
+                (
+                    h.file.as_str(),
+                    h.row_start,
+                    h.row_end,
+                    h.segments
+                        .iter()
+                        .map(|s| (s.row_start, s.row_end, s.tier))
+                        .collect(),
+                )
+            })
+            .collect();
+        let ctx: Vec<(u32, u32)> = payload
+            .hunks
+            .iter()
+            .map(|h| (h.ctx_head, h.ctx_tail))
+            .collect();
+        assert_eq!(ctx, vec![(0, 0), (3, 3), (2, 1)]);
+        assert_eq!(
+            shape,
+            vec![
+                (
+                    "src/big.rs",
+                    6,
+                    185,
+                    vec![(6, 145, 5), (146, 163, 1), (164, 185, 5)]
+                ),
+                ("src/lib.rs", 190, 200, vec![(190, 197, 2), (198, 200, 4)]),
+                ("docs/CHANGELOG.md", 205, 209, vec![(205, 209, 4)]),
+            ]
+        );
     }
 
     #[test]

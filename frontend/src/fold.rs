@@ -18,7 +18,7 @@ use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
-use crate::state::{AppState, FOLD_CONTEXT_ROWS, seam_plan};
+use crate::state::{AppState, FOLD_CONTEXT_ROWS, pin_context, seam_plan};
 use crate::{SCROLL_IDLE_MS, article_of, event_element, web_document};
 
 /// Wire the fold pass and the segment-hover affordances to `document`.
@@ -254,10 +254,14 @@ fn refold_hunk(state: AppState, max_tier: u8, art: &web_sys::Element, oi: usize)
         }
     }
     // Degenerate tilings can't fold; legacy maps have no segments at all.
-    let seg_count = state
+    let (seg_count, ctx_head, ctx_tail) = state
         .map
-        .with_untracked(|m| m.hunks.get(oi).map(|h| h.segments.len()))
-        .unwrap_or(0);
+        .with_untracked(|m| {
+            m.hunks
+                .get(oi)
+                .map(|h| (h.segments.len(), h.ctx_head as usize, h.ctx_tail as usize))
+        })
+        .unwrap_or_default();
     if seg_count <= 1 {
         return;
     }
@@ -265,17 +269,18 @@ fn refold_hunk(state: AppState, max_tier: u8, art: &web_sys::Element, oi: usize)
         return;
     };
     let mut tiers = Vec::with_capacity(rows.length() as usize);
-    let mut commented = Vec::with_capacity(rows.length() as usize);
+    let mut pinned = Vec::with_capacity(rows.length() as usize);
     for i in 0..rows.length() {
         let Some(node) = rows.item(i) else { continue };
         let el: web_sys::Element = node.unchecked_into();
         tiers.push(row_tier(&el));
-        commented.push(el.class_list().contains("line-commented"));
+        pinned.push(el.class_list().contains("line-commented"));
     }
+    pin_context(&mut pinned, ctx_head, ctx_tail);
     let Some(document) = web_document() else {
         return;
     };
-    for plan in seam_plan(&tiers, &commented, max_tier, FOLD_CONTEXT_ROWS) {
+    for plan in seam_plan(&tiers, &pinned, max_tier, FOLD_CONTEXT_ROWS) {
         for i in plan.start..=plan.end {
             if let Some(node) = rows.item(i as u32) {
                 let el: web_sys::Element = node.unchecked_into();
@@ -382,18 +387,15 @@ fn hover_hit(
         .and_then(|el| el.closest(".hunk-body [data-seg]").ok().flatten())
         .and_then(|row| {
             let rel_x = f64::from(client_x) - row.get_bounding_client_rect().left();
-            (rel_x <= TIER_CELL_PX).then_some(row)
+            (rel_x <= TIER_CELL_PX || row.class_list().contains("seg-start")).then_some(row)
         })
         .and_then(|row| {
             let (_, oi) = article_of(&row)?;
             let dline = row.get_attribute("data-dline")?.parse::<u32>().ok()?;
             let seg_idx = row.get_attribute("data-seg")?.parse::<usize>().ok()?;
-            let seg = state.map.with_untracked(|m| {
-                let h = m.hunks.get(oi)?;
-                (h.segments.len() > 1)
-                    .then(|| h.segments.get(seg_idx).cloned())
-                    .flatten()
-            })?;
+            let seg = state
+                .map
+                .with_untracked(|m| m.hunks.get(oi)?.segments.get(seg_idx).cloned())?;
             Some((oi, dline, seg))
         });
     let key = found.as_ref().map(|(oi, dline, _)| (*oi, *dline));

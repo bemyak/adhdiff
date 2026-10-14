@@ -472,11 +472,11 @@ pub struct SeamPlan {
 }
 
 /// Hide set + seam list for one body: [`fold_runs`] with every commented
-/// row rescued — a row carrying a comment never folds; it splits the run
-/// around it and stays visible alone (no added context, edge comments
-/// simply trim the run, a run of only comments emits no seams).
+/// or pinned row rescued — such a row never folds; it splits the run
+/// around it and stays visible alone (no added context, edge rows
+/// simply trim the run, a run of only rescued rows emits no seams).
 /// `commented` is parallel to `row_tiers`; a short slice counts missing
-/// rows as uncommented.
+/// rows as unrescued.
 pub fn seam_plan(
     row_tiers: &[Option<u8>],
     commented: &[bool],
@@ -502,6 +502,14 @@ pub fn seam_plan(
         }
     }
     plans
+}
+
+/// Marks the raw hunk's own context rows (`lead` first, `trail` last) as
+/// pinned: [`seam_plan`] never folds a pinned row.
+pub fn pin_context(pinned: &mut [bool], lead: usize, trail: usize) {
+    let n = pinned.len();
+    pinned[..lead.min(n)].fill(true);
+    pinned[n - trail.min(n)..].fill(true);
 }
 
 /// Per-row tiers for one raw hunk from its tiling segments: row
@@ -532,15 +540,18 @@ pub fn visible_row_estimate(
     row_start: u32,
     row_end: u32,
     body_rows: u32,
+    (ctx_head, ctx_tail): (u32, u32),
     max_tier: u8,
 ) -> u32 {
     let Some(n_rows) = row_end.checked_sub(row_start).map(|d| d as usize + 1) else {
         return body_rows;
     };
     let tiers = segment_row_tiers(segments, row_start, n_rows);
-    let hidden: usize = fold_runs(&tiers, max_tier, FOLD_CONTEXT_ROWS)
+    let mut pinned = vec![false; n_rows];
+    pin_context(&mut pinned, ctx_head as usize, ctx_tail as usize);
+    let hidden: usize = seam_plan(&tiers, &pinned, max_tier, FOLD_CONTEXT_ROWS)
         .iter()
-        .map(|(lo, hi)| hi - lo + 1)
+        .map(|p| p.end - p.start + 1)
         .sum();
     body_rows.saturating_sub(hidden as u32)
 }
@@ -1221,14 +1232,91 @@ mod tests {
         // (the segments fixture): filtering to P1 keeps the P1 band plus
         // ±3 context → 18 + 6 visible of 180.
         let segs = [seg(1, 140, 5), seg(141, 158, 1), seg(159, 180, 5)];
-        assert_eq!(visible_row_estimate(&segs, 1, 180, 180, 1), 24);
-        assert_eq!(visible_row_estimate(&segs, 1, 180, 180, 7), 180);
+        assert_eq!(visible_row_estimate(&segs, 1, 180, 180, (0, 0), 1), 24);
+        assert_eq!(visible_row_estimate(&segs, 1, 180, 180, (0, 0), 7), 180);
         // Single (or no) segment: nothing can fold.
-        assert_eq!(visible_row_estimate(&[seg(1, 20, 0)], 1, 20, 20, 0), 20);
-        assert_eq!(visible_row_estimate(&[], 1, 20, 20, 0), 20);
+        assert_eq!(
+            visible_row_estimate(&[seg(1, 20, 0)], 1, 20, 20, (0, 0), 0),
+            20
+        );
+        assert_eq!(visible_row_estimate(&[], 1, 20, 20, (0, 0), 0), 20);
         // Degenerate range (end before start): untouched.
-        assert_eq!(visible_row_estimate(&segs, 5, 4, 7, 0), 7);
+        assert_eq!(visible_row_estimate(&segs, 5, 4, 7, (0, 0), 0), 7);
         // Everything filtered out folds all rows but never underflows.
-        assert_eq!(visible_row_estimate(&[seg(1, 20, 5)], 1, 20, 5, 0), 0);
+        assert_eq!(
+            visible_row_estimate(&[seg(1, 20, 5)], 1, 20, 5, (0, 0), 0),
+            0
+        );
+    }
+
+    /// Demo's first raw hunk: rows 6-185 → P5 head, P1 lookup, P5 tail.
+    fn demo_row_tiers() -> Vec<Option<u8>> {
+        let mut t = vec![Some(5); 140];
+        t.extend(vec![Some(1); 18]);
+        t.extend(vec![Some(5); 22]);
+        t
+    }
+
+    #[test]
+    fn demo_hunk_at_p1_keeps_the_band_plus_context_and_folds_the_rest() {
+        let t = demo_row_tiers();
+        assert_eq!(
+            fold_runs(&t, 1, FOLD_CONTEXT_ROWS),
+            vec![(0, 136), (161, 179)]
+        );
+        assert_eq!(
+            seam_plan(&t, &[false; 180], 1, FOLD_CONTEXT_ROWS),
+            vec![
+                SeamPlan { start: 0, end: 136 },
+                SeamPlan {
+                    start: 161,
+                    end: 179
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn demo_hunk_at_p5_folds_nothing() {
+        let t = demo_row_tiers();
+        assert!(fold_runs(&t, 5, FOLD_CONTEXT_ROWS).is_empty());
+        assert!(seam_plan(&t, &[false; 180], 5, FOLD_CONTEXT_ROWS).is_empty());
+    }
+
+    #[test]
+    fn hunk_own_context_rows_survive_the_fold() {
+        // 3 leading ctx rows + P5 + P1 band + P5 + 3 trailing ctx rows,
+        // the ctx rows tiered by their enclosing P5 segments.
+        let mut t = vec![Some(5); 30];
+        t.extend(vec![Some(1); 5]);
+        t.extend(vec![Some(5); 30]);
+        let mut pinned = vec![false; t.len()];
+        pin_context(&mut pinned, 3, 3);
+        assert_eq!(
+            seam_plan(&t, &pinned, 1, FOLD_CONTEXT_ROWS),
+            vec![
+                SeamPlan { start: 3, end: 26 },
+                SeamPlan { start: 38, end: 61 }
+            ]
+        );
+        // Without the pins the leading/trailing context would fold.
+        assert_eq!(
+            seam_plan(&t, &vec![false; t.len()], 1, FOLD_CONTEXT_ROWS)[0],
+            SeamPlan { start: 0, end: 26 }
+        );
+        // The height estimate agrees with the plan: 65 rows - 24 - 24.
+        let segs = [seg(1, 30, 5), seg(31, 35, 1), seg(36, 65, 5)];
+        assert_eq!(visible_row_estimate(&segs, 1, 65, 65, (3, 3), 1), 17);
+        assert_eq!(visible_row_estimate(&segs, 1, 65, 65, (3, 3), 5), 65);
+    }
+
+    #[test]
+    fn pin_context_clamps_to_the_body() {
+        let mut p = vec![false; 4];
+        pin_context(&mut p, 9, 0);
+        assert_eq!(p, vec![true; 4]);
+        let mut p = vec![false; 5];
+        pin_context(&mut p, 1, 2);
+        assert_eq!(p, vec![true, false, false, true, true]);
     }
 }
