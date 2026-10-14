@@ -52,7 +52,7 @@ in
         programs.claude-code.skills.adhdiff = skillDir;
       })
       (lib.optionalAttrs (options.programs ? omp) {
-        programs.omp.settings."skills.customDirectories" = [ "${cfg.package}/share/adhdiff/skills" ];
+        programs.omp.settings.skills.customDirectories = [ "${cfg.package}/share/adhdiff/skills" ];
       })
     ]))
   ];
