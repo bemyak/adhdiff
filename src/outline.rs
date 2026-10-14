@@ -256,6 +256,12 @@ fn group_payload(g: &Inner, gr: &RawGroup, oi: usize) -> HunkPayload {
             .collect(),
         comments: comments_at(g, &gr.file, gr.span.0, gr.span.1),
         viewed: g.viewed.contains(&gr.identity()),
+        openable: g.workdir_hint.as_ref().is_some_and(|wd| {
+            g.files
+                .iter()
+                .any(|f| f.path() == gr.file && f.new_path != "/dev/null")
+                && crate::editor::openable(&gr.file, wd)
+        }),
     }
 }
 
@@ -348,6 +354,11 @@ pub fn map_payload(g: &Inner) -> MapPayload {
         summary: g.map.summary.clone(),
         diff_sha12: g.diff_sha[..12].to_string(),
         workdir: g.workdir_hint.as_ref().map(|w| w.display().to_string()),
+        editor: g
+            .editor
+            .as_deref()
+            .and_then(|e| e.split_whitespace().next())
+            .map(str::to_string),
         hunks,
         outline,
     }
@@ -491,6 +502,7 @@ mod tests {
             state_path: "/tmp/unused.json".into(),
             diff_sha: "0".repeat(16),
             workdir_hint: None,
+            editor: None,
             body_cache: Default::default(),
         };
         let payload = map_payload(&g);

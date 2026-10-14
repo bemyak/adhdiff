@@ -189,7 +189,19 @@ Your job ends at a valid `map.json`; the human picks the surface:
 not match the diff. `gui` and `tui` require `--diff-file` (map may come via
 stdin). `--out PATH`: if PATH is an existing directory or ends with `/`, the
 state file is `PATH/<sha12>.json`; otherwise PATH is the state file itself.
-Open-in-editor jumps resolve `$VISUAL`, then `$EDITOR`, else `vi`.
+Open-in-editor jumps resolve `$VISUAL`, then `$EDITOR` in the GUI and `$EDITOR`, then `$VISUAL`, else `vi` in the TUI; the GUI button is hidden when no usable editor is configured or the file is not in the worktree.
+
+Agent harnesses typically pin `VISUAL`, `EDITOR` and `GIT_EDITOR` to `true`
+in subprocess environments, which adhdiff treats as "no editor". When you
+launch `gui`, pass the user's real editor explicitly:
+
+```bash
+VISUAL=<editor> adhdiff gui --map "$WORK/map.json" --diff-file "$WORK/change.diff"
+```
+
+Find `<editor>` from the user's login environment (for example the value a
+login shell reports with `sh -lc 'echo $VISUAL $EDITOR'`), or ask; never
+guess a program that may not be installed.
 Comments and viewed state persist to the sidecar described in §5.
 
 ## Local feedback loop: UI comments are feedback for you
@@ -204,7 +216,7 @@ the forge" below.)
    target checkout (the §5 cwd rule stands):
 
    ```bash
-   (cd <checkout> && adhdiff gui --map "$WORK/map.json" --diff-file "$WORK/change.diff" \
+   (cd <checkout> && VISUAL=<editor> adhdiff gui --map "$WORK/map.json" --diff-file "$WORK/change.diff" \
      --out "$WORK/review/")
    ```
 

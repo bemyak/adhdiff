@@ -36,20 +36,29 @@ pub struct Inner {
     pub diff_sha: String,
     /// Absolute path of the git/jj worktree the app was started in, used
     /// to resolve `e`/`open-in-editor` jumps. None outside a worktree
-    /// (then the button is a no-op).
+    /// (then the button is hidden).
     pub workdir_hint: Option<PathBuf>,
+    /// The usable editor command resolved at startup; None when there is
+    /// no worktree or `$VISUAL`/`$EDITOR` cannot be launched.
+    pub editor: Option<String>,
     /// Rendered hunk-body markup by map index, filled by get_hunk_body /
     /// get_file_bodies on first request. Pins are baked into the markup,
     /// so comment mutations drop the file's entries.
     pub body_cache: HashMap<usize, String>,
 }
 
-/// The git/jj worktree containing cwd, used for open-in-editor jumps and
-/// as the sidecar key's canonical path. None outside a worktree.
+/// The git/jj worktree containing cwd — the nearest ancestor holding a
+/// `.git` or `.jj` — used for open-in-editor jumps and as the sidecar
+/// key's canonical path. None outside a worktree.
 pub fn detect_workdir() -> Option<PathBuf> {
-    std::env::current_dir()
-        .ok()
-        .filter(|p| p.join(".git").exists() || p.join(".jj").exists())
+    find_worktree_root(&std::env::current_dir().ok()?)
+}
+
+fn find_worktree_root(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|p| p.join(".git").exists() || p.join(".jj").exists())
+        .map(Path::to_path_buf)
 }
 
 /// Sidecar file for a diff inside `store_dir`: `<diff-sha[..12]>.json`.
@@ -298,6 +307,19 @@ mod tests {
     const SHA: &str = "0123456789abcdef0123456789abcdef";
 
     #[test]
+    fn worktree_root_is_the_nearest_ancestor_with_a_vcs_dir() {
+        let root = scratch("walkup");
+        std::fs::create_dir_all(root.join(".jj")).unwrap();
+        let nested = root.join("a/b");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert_eq!(find_worktree_root(&nested), Some(root.clone()));
+        assert_eq!(find_worktree_root(&root), Some(root.clone()));
+        std::fs::write(root.join("a/.git"), "gitdir: x").unwrap();
+        assert_eq!(find_worktree_root(&nested), Some(root.join("a")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn out_directory_holds_sha12_json_and_a_file_path_is_used_verbatim() {
         let dir = scratch("out");
         let (_, _, p, w) = load(SHA, Some(dir.to_str().unwrap()), None).unwrap();
@@ -431,6 +453,7 @@ mod tests {
             state_path: path.clone(),
             diff_sha: SHA.into(),
             workdir_hint: None,
+            editor: None,
             body_cache: HashMap::new(),
         };
         persist_sidecar(&g).unwrap();

@@ -1113,16 +1113,13 @@ pub fn toggle_viewed(state: AppState, oi: usize) -> bool {
 }
 
 /// `$EDITOR` for the hunk's file at its first row (the backend maps the row
-/// to a file line) — silent no-op outside a worktree, matching the old UI
-/// simply not rendering the button there. A failed launch is announced.
+/// to a file line) — a silent no-op unless the backend reported a usable
+/// editor and the file openable, matching the button not being rendered.
+/// A failed launch is announced.
 pub fn open_in_editor(state: AppState, oi: usize) {
     let Some((file, row)) = state.map.with_untracked(|m| {
-        if m.workdir.is_some() {
-            let h = &m.hunks[oi];
-            Some((h.file.clone(), h.row_start))
-        } else {
-            None
-        }
+        let h = m.hunks.get(oi)?;
+        (m.editor.is_some() && h.openable).then(|| (h.file.clone(), h.row_start))
     }) else {
         return;
     };

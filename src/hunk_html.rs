@@ -134,6 +134,7 @@ mod tests {
             state_path: PathBuf::from("/tmp/unused.json"),
             diff_sha: String::new(),
             workdir_hint: None,
+            editor: None,
             body_cache: HashMap::new(),
         }
     }

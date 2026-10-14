@@ -66,7 +66,7 @@ The release binary embeds `frontend/dist`. For frontend hot-reload run
 `trunk serve` in `frontend/` and `cargo run --no-default-features -- gui …`,
 which loads `http://localhost:1420` instead.
 
-The GUI's `e` jump needs a windowed editor (`VISUAL=code` or similar); a terminal editor has no TTY there.
+The GUI's `e` jump needs a windowed editor (`VISUAL=code` or similar); a terminal editor has no TTY there. The GUI resolves `$VISUAL`, then `$EDITOR`; the TUI `$EDITOR`, then `$VISUAL`, else `vi`. The open button is hidden when no usable editor is configured or the file is not in the worktree.
 
 ## CLI
 

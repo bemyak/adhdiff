@@ -340,6 +340,11 @@ pub struct MapPayload {
     /// worktree (open-in-editor is disabled then).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workdir: Option<String>,
+    /// Program of the usable `$VISUAL`/`$EDITOR`; absent when none is
+    /// usable or no worktree is bound (the open-in-editor button is
+    /// hidden then).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor: Option<String>,
     /// Hunks in outline (reading) order.
     pub hunks: Vec<HunkPayload>,
     pub outline: Vec<OutlineItem>,
@@ -395,6 +400,9 @@ pub struct HunkPayload {
     pub segments: Vec<SegmentPayload>,
     pub comments: Vec<SavedComment>,
     pub viewed: bool,
+    /// The hunk's file is a regular file under the bound worktree.
+    #[serde(default)]
+    pub openable: bool,
 }
 
 /// One hunk's fully-rendered body: highlighted markup with comment pins

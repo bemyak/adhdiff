@@ -788,6 +788,9 @@ pub fn run_tui(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<()> 
     if let Some(w) = &load_warn {
         eprintln!("adhdiff tui: {w}");
     }
+    let editor = workdir_hint
+        .as_ref()
+        .and_then(|_| crate::editor::resolve_editor(crate::editor::Surface::Tui));
     let inner = Inner {
         map,
         files,
@@ -796,6 +799,7 @@ pub fn run_tui(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<()> 
         state_path,
         diff_sha,
         workdir_hint,
+        editor,
         body_cache: Default::default(),
     };
     eprintln!(
@@ -873,19 +877,22 @@ fn run_editor(
     let Some(wd) = app.inner.workdir_hint.clone() else {
         return;
     };
-    let editor = crate::editor::resolve_editor();
+    let Some(editor) = app.inner.editor.clone() else {
+        app.flash("editor: no usable editor");
+        return;
+    };
     let stem = std::path::Path::new(editor.split_whitespace().next().unwrap_or_default())
         .file_stem()
         .map(|s| s.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     if editor_is_windowed(&stem) {
-        if let Err(why) = crate::editor::open_in_editor(file, line, &wd) {
+        if let Err(why) = crate::editor::open_in_editor(&editor, file, line, &wd) {
             app.flash(&format!("editor: {why}"));
         }
         return;
     }
     restore_terminal();
-    let res = crate::editor::open_in_editor_wait(file, line, &wd);
+    let res = crate::editor::open_in_editor_wait(&editor, file, line, &wd);
     // Re-enter, matching the startup install: raw mode, alt screen, kitty
     // disambiguation, then a full clear so the next draw repaints.
     let back = (|| -> Result<()> {
@@ -1576,6 +1583,7 @@ index 0000000..3333333
             state_path: dir.join("state.json"),
             diff_sha: "abcdef1234567890".into(),
             workdir_hint: None,
+            editor: None,
             body_cache: Default::default(),
         };
         (App::new(inner), dir)
@@ -1912,6 +1920,7 @@ index 0000000..3333333
             state_path: dir.join("state.json"),
             diff_sha: "abcdef1234567890".into(),
             workdir_hint: None,
+            editor: None,
             body_cache: Default::default(),
         };
         let map_entries = inner.map.hunks.len();

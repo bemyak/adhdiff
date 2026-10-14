@@ -34,7 +34,7 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
     };
     let is_viewed = move || state.viewed.with(|v| v.contains(&identity));
     let is_viewed_label = is_viewed.clone();
-    let has_workdir = state.map.with_untracked(|m| m.workdir.is_some());
+    let can_open = state.map.with_untracked(|m| m.editor.is_some()) && h.openable;
     let confidence = (!matches!(h.confidence, Confidence::High))
         .then(|| format!("{:?}", h.confidence).to_lowercase());
     let rationale = h.rationale.clone();
@@ -84,7 +84,7 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
                     <span class="icon-open" inner_html=icons::EYE></span>
                     <span class="icon-closed" inner_html=icons::EYE_OFF></span>
                 </button>
-                {has_workdir.then(|| view! {
+                {can_open.then(|| view! {
                     <button
                         class="open-btn"
                         title="open in editor (e)"

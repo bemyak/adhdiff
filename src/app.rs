@@ -168,13 +168,16 @@ pub fn open_in_editor_now(g: &Inner, file: &str, row: Option<u32>) -> Result<(),
     let Some(wd) = &g.workdir_hint else {
         return Err("not inside a git/jj worktree".to_string());
     };
+    let Some(editor) = &g.editor else {
+        return Err("no usable editor".to_string());
+    };
     let hit =
         row.and_then(|r| find_raw_for(&g.files, r).map(|(f, raw)| (f, row_to_new_line(raw, r))));
     let (path, line) = match hit {
         Some((f, line)) => (f.path(), line),
         None => (file, 1),
     };
-    crate::editor::open_in_editor(path, line, wd).map(|_| ())
+    crate::editor::open_in_editor(editor, path, line, wd).map(|_| ())
 }
 
 /// The full viewed key set (`file:row_start`), sorted — hunks are small,
@@ -205,6 +208,10 @@ fn build_inner(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<Inne
         eprintln!("adhdiff gui: {w}");
     }
 
+    let editor = workdir_hint
+        .as_ref()
+        .and_then(|_| crate::editor::resolve_editor(crate::editor::Surface::Gui));
+
     Ok(Inner {
         map,
         files,
@@ -213,6 +220,7 @@ fn build_inner(map: AdhDiffMap, diff: &[u8], out: Option<String>) -> Result<Inne
         state_path,
         diff_sha,
         workdir_hint,
+        editor,
         body_cache: std::collections::HashMap::new(),
     })
 }
@@ -475,6 +483,46 @@ mod tests {
         });
         assert!(m.is_poisoned());
         assert_eq!(lock(&m).map.hunks.len(), 6);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn payload_editor_and_openable_follow_the_worktree_and_editor() {
+        let dir = scratch_dir("openable");
+        let mut inner = fixture_inner(&dir);
+        inner.workdir_hint = None;
+        inner.editor = None;
+        let p = map_payload(&inner);
+        assert_eq!(p.editor, None);
+        assert!(p.hunks.iter().all(|h| !h.openable));
+
+        let wd = dir.join("wd");
+        let file = p.hunks[0].file.clone();
+        std::fs::create_dir_all(wd.join(&file).parent().unwrap()).unwrap();
+        std::fs::write(wd.join(&file), "").unwrap();
+        inner.workdir_hint = Some(wd);
+        inner.editor = Some("zeditor -w".into());
+        let p = map_payload(&inner);
+        assert_eq!(p.editor.as_deref(), Some("zeditor"));
+        let openable: Vec<_> = p
+            .hunks
+            .iter()
+            .filter(|h| h.openable)
+            .map(|h| h.file.clone())
+            .collect();
+        assert!(!openable.is_empty() && openable.iter().all(|f| *f == file));
+        assert!(p.hunks.iter().any(|h| !h.openable));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn visual_true_pin_yields_no_editor_in_the_payload() {
+        let dir = scratch_dir("pinned");
+        let mut inner = fixture_inner(&dir);
+        inner.workdir_hint = Some(dir.clone());
+        inner.editor =
+            crate::editor::usable_editor(crate::editor::Surface::Gui, Some("true"), None, None);
+        assert_eq!(map_payload(&inner).editor, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
