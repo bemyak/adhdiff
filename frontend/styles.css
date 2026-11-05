@@ -178,9 +178,12 @@ header { background: var(--bg-panel); border-bottom: 1px solid var(--border); pa
 .rationale { padding: 10px 14px; color: var(--fg-dim); font-size: 13px; line-height: 1.5; font-style: italic; border-bottom: 1px solid var(--border); }
 
 pre.hunk-body { font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace; font-size: 12px; line-height: 1.55; overflow-x: auto; margin: 0; }
-/* Stand-in for a not-yet-fetched body; inline min-height (reserved by the
-   component) matches the final block height so the inject doesn't reflow
-   the pane. */
+/* Reserved height of a body slot: the component sets --rows (12px rows)
+   and --small-rows (11px edge markers and fold seams), each row one
+   1.55 line box, so the min-height matches the final block height and
+   the inject doesn't reflow the pane. */
+.body-slot { --reserved: calc((var(--rows, 0) * 12px + var(--small-rows, 0) * 11px) * 1.55); content-visibility: auto; contain-intrinsic-block-size: var(--reserved); min-height: var(--reserved); }
+/* Stand-in for a not-yet-fetched body. */
 .body-loading { display: flex; align-items: center; justify-content: center; color: var(--fg-dim); font-size: 11px; }
 .hunk-body > div { position: relative; padding-left: 50px; min-height: calc(1em * 1.55); }
 .hunk-body > div > .rt { display: inline-block; }

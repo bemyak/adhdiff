@@ -391,9 +391,17 @@ pub struct HunkPayload {
     pub confidence: Confidence,
     /// `row_start` of the outline parent's raw hunk; `None` for roots.
     pub supports: Option<u32>,
-    /// Unhighlighted body row count — the frontend reserves exactly this
-    /// much vertical space (rows × line-height) until the body arrives.
+    /// Unhighlighted body row count — with `extra_rows` and `edge_rows`
+    /// it sizes the frontend's placeholder until the body arrives.
     pub body_rows: u32,
+    /// Worktree context rows (`ctx-extra`) the body renders around the
+    /// raw hunk's own rows; they never fold.
+    #[serde(default)]
+    pub extra_rows: u32,
+    /// "start of file" / "end of file" marker rows (`ctx-edge`) the body
+    /// renders: 0, 1 or 2.
+    #[serde(default)]
+    pub edge_rows: u32,
     /// Segments tiling this raw hunk's rows, sorted by `row_start`;
     /// empty when the map predates sub-hunk segments.
     #[serde(default)]

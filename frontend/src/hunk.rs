@@ -41,6 +41,7 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
         .then(|| format!("{:?}", h.confidence).to_lowercase());
     let rationale = h.rationale.clone();
     let body_rows = h.body_rows;
+    let (extra_rows, edge_rows) = (h.extra_rows, h.edge_rows);
     let segments = h.segments.clone();
     let (row_start, row_end) = (h.row_start, h.row_end);
     let ctx = (h.ctx_head, h.ctx_tail);
@@ -132,11 +133,13 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
             </header>
             {(!rationale.is_empty()).then(|| view! { <p class="rationale">{rationale}</p> })}
             // Bodies arrive lazily (see lib.rs prefetch_bodies). The slot
-            // reserves the ACTIVE FILTER's row count × the stylesheet's
-            // 12px × 1.55 row: rows under folded segments stop occupying
-            // space once fold.rs hides them, so the reservation tracks
-            // state.tier — real rows can't wrap, so the reserved height
-            // IS the final block height: the inject is
+            // reserves the ACTIVE FILTER's rows: diff rows left visible
+            // plus worktree context as --rows, edge markers plus fold.rs's
+            // seams as the smaller --small-rows, sized by the stylesheet
+            // like the rows themselves. Rows under folded segments stop
+            // occupying space once fold.rs hides them, so the reservation
+            // tracks state.tier — real rows can't wrap, so the reserved
+            // height IS the final block height: the inject is
             // geometry-preserving (no jump, untouched wheel anchors), and
             // content-visibility:auto keeps offscreen hunk bodies out of
             // layout/paint entirely — O(viewport) render cost regardless
@@ -145,13 +148,13 @@ pub fn HunkSection(state: AppState, oi: usize) -> impl IntoView {
                 id=format!("hunk-{oi}-body")
                 class="body-slot"
                 style=move || {
-                    let rows = visible_row_estimate(
+                    let (rows, seams) = visible_row_estimate(
                         &segments, row_start, row_end, body_rows, ctx, state.tier.get(),
                     );
                     format!(
-                        "content-visibility:auto;\
-                         contain-intrinsic-block-size:{h:.1}px;min-height:{h:.1}px",
-                        h = f64::from(rows) * 12.0 * 1.55
+                        "--rows:{};--small-rows:{}",
+                        rows + extra_rows,
+                        seams + edge_rows
                     )
                 }
             >{move || match state.bodies.with(|b| b.get(&map_idx).cloned()) {

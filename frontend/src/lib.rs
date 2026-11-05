@@ -278,7 +278,7 @@ pub(crate) const SCROLL_IDLE_MS: i32 = 120;
 /// always reflects the pane's true midline. The remaining hazard — a body
 /// landing between wheel and rAF shifting the anchors mid-equation — is
 /// neutralized by sizing each unloaded body to its final height
-/// (body_rows × line-height placeholder in hunk.rs), making injects
+/// (row-count placeholder in hunk.rs), making injects
 /// geometry-preserving for every head position and scrollTop.
 fn prefetch_bodies(
     state: AppState,

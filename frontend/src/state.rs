@@ -563,9 +563,10 @@ pub fn segment_row_tiers(
         .collect()
 }
 
-/// Rows still visible in a `body_rows`-row body under `max_tier`: fold
-/// runs computed over the hunk's rows (segments are row spans, so the
-/// estimate matches the DOM's per-row classes).
+/// Rows still visible in a `body_rows`-row body under `max_tier`, and the
+/// fold seams standing in for the hidden ones: fold runs computed over
+/// the hunk's rows (segments are row spans, so the estimate matches the
+/// DOM's per-row classes).
 pub fn visible_row_estimate(
     segments: &[SegmentPayload],
     row_start: u32,
@@ -573,18 +574,16 @@ pub fn visible_row_estimate(
     body_rows: u32,
     (ctx_head, ctx_tail): (u32, u32),
     max_tier: u8,
-) -> u32 {
+) -> (u32, u32) {
     let Some(n_rows) = row_end.checked_sub(row_start).map(|d| d as usize + 1) else {
-        return body_rows;
+        return (body_rows, 0);
     };
     let tiers = segment_row_tiers(segments, row_start, n_rows);
     let mut pinned = vec![false; n_rows];
     pin_context(&mut pinned, ctx_head as usize, ctx_tail as usize);
-    let hidden: usize = seam_plan(&tiers, &pinned, max_tier, FOLD_CONTEXT_ROWS)
-        .iter()
-        .map(|p| p.end - p.start + 1)
-        .sum();
-    body_rows.saturating_sub(hidden as u32)
+    let plans = seam_plan(&tiers, &pinned, max_tier, FOLD_CONTEXT_ROWS);
+    let hidden: usize = plans.iter().map(|p| p.end - p.start + 1).sum();
+    (body_rows.saturating_sub(hidden as u32), plans.len() as u32)
 }
 
 /// localStorage draft key for a comment span; ranges add the end row.
@@ -1283,22 +1282,25 @@ mod tests {
     fn visible_rows_subtract_fold_runs_and_never_underflows() {
         // 180-row hunk tiled rows 1-140 P5 / 141-158 P1 / 159-180 P5
         // (the segments fixture): filtering to P1 keeps the P1 band plus
-        // ±3 context → 18 + 6 visible of 180.
+        // ±3 context → 18 + 6 visible of 180, one seam per folded side.
         let segs = [seg(1, 140, 5), seg(141, 158, 1), seg(159, 180, 5)];
-        assert_eq!(visible_row_estimate(&segs, 1, 180, 180, (0, 0), 1), 24);
-        assert_eq!(visible_row_estimate(&segs, 1, 180, 180, (0, 0), 7), 180);
+        assert_eq!(visible_row_estimate(&segs, 1, 180, 180, (0, 0), 1), (24, 2));
+        assert_eq!(
+            visible_row_estimate(&segs, 1, 180, 180, (0, 0), 7),
+            (180, 0)
+        );
         // Single (or no) segment: nothing can fold.
         assert_eq!(
             visible_row_estimate(&[seg(1, 20, 0)], 1, 20, 20, (0, 0), 0),
-            20
+            (20, 0)
         );
-        assert_eq!(visible_row_estimate(&[], 1, 20, 20, (0, 0), 0), 20);
+        assert_eq!(visible_row_estimate(&[], 1, 20, 20, (0, 0), 0), (20, 0));
         // Degenerate range (end before start): untouched.
-        assert_eq!(visible_row_estimate(&segs, 5, 4, 7, (0, 0), 0), 7);
+        assert_eq!(visible_row_estimate(&segs, 5, 4, 7, (0, 0), 0), (7, 0));
         // Everything filtered out folds all rows but never underflows.
         assert_eq!(
             visible_row_estimate(&[seg(1, 20, 5)], 1, 20, 5, (0, 0), 0),
-            0
+            (0, 1)
         );
     }
 
@@ -1357,10 +1359,11 @@ mod tests {
             seam_plan(&t, &vec![false; t.len()], 1, FOLD_CONTEXT_ROWS)[0],
             SeamPlan { start: 0, end: 26 }
         );
-        // The height estimate agrees with the plan: 65 rows - 24 - 24.
+        // The height estimate agrees with the plan: 65 rows - 24 - 24, two
+        // seams.
         let segs = [seg(1, 30, 5), seg(31, 35, 1), seg(36, 65, 5)];
-        assert_eq!(visible_row_estimate(&segs, 1, 65, 65, (3, 3), 1), 17);
-        assert_eq!(visible_row_estimate(&segs, 1, 65, 65, (3, 3), 5), 65);
+        assert_eq!(visible_row_estimate(&segs, 1, 65, 65, (3, 3), 1), (17, 2));
+        assert_eq!(visible_row_estimate(&segs, 1, 65, 65, (3, 3), 5), (65, 0));
     }
 
     #[test]

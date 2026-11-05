@@ -16,7 +16,7 @@ use adhdiff_shared::{
     SegmentPayload,
 };
 
-use crate::context::FileLines;
+use crate::context::{FileLines, extra_context};
 use crate::diff::{FileDiff, find_raw_for};
 use crate::hunk_html::render_hunk_body_html;
 use crate::state::{Inner, comments_at};
@@ -225,8 +225,9 @@ fn payload_groups(g: &Inner) -> Vec<RawGroup> {
 /// highlighted body markup rides `hunk_body` and is fetched on demand.
 /// Segment-level entries surface denormalized in `segments`; everything
 /// hunk-level (priority, label, comments span) is derived here.
-fn group_payload(g: &Inner, gr: &RawGroup, oi: usize) -> HunkPayload {
-    let (ctx_head, ctx_tail) = find_raw_for(&g.files, gr.span.0).map_or((0, 0), |(_, raw)| {
+fn group_payload(g: &Inner, gr: &RawGroup, oi: usize, files: &mut FileLines) -> HunkPayload {
+    let raw = find_raw_for(&g.files, gr.span.0);
+    let (ctx_head, ctx_tail) = raw.map_or((0, 0), |(_, raw)| {
         let is_ctx = |l: &&str| l.is_empty() || l.starts_with(' ');
         let head = raw.body.lines().take_while(is_ctx).count();
         let tail = raw
@@ -238,6 +239,9 @@ fn group_payload(g: &Inner, gr: &RawGroup, oi: usize) -> HunkPayload {
             .count();
         (head as u32, tail as u32)
     });
+    let extra = raw
+        .map(|(f, raw)| extra_context(g, f, raw, files))
+        .unwrap_or_default();
     let anchor = &g.map.hunks[gr.anchor];
     let label_h = &g.map.hunks[gr.label_idx];
     HunkPayload {
@@ -253,6 +257,8 @@ fn group_payload(g: &Inner, gr: &RawGroup, oi: usize) -> HunkPayload {
         confidence: anchor.confidence,
         supports: gr.supports,
         body_rows: gr.span.1.saturating_sub(gr.span.0).saturating_add(1),
+        extra_rows: (extra.before.len() + extra.after.len()) as u32,
+        edge_rows: u32::from(extra.at_bof) + u32::from(extra.at_eof),
         segments: gr
             .segments
             .iter()
@@ -353,10 +359,11 @@ pub fn invalidate_file_bodies(g: &mut Inner, file: &str) {
 pub fn map_payload(g: &Inner) -> MapPayload {
     let groups = payload_groups(g);
     let parent: Vec<Option<usize>> = groups.iter().map(|gr| gr.parent).collect();
+    let mut files = FileLines::new();
     let hunks: Vec<HunkPayload> = groups
         .iter()
         .enumerate()
-        .map(|(oi, gr)| group_payload(g, gr, oi))
+        .map(|(oi, gr)| group_payload(g, gr, oi, &mut files))
         .collect();
     let outline: Vec<OutlineItem> = groups
         .iter()
@@ -589,5 +596,95 @@ mod tests {
         assert_eq!(item.body_rows, 5);
         assert_eq!(item.comments.len(), 1);
         assert_eq!(item.comments[0].body, "note");
+    }
+
+    #[test]
+    fn payload_counts_the_extra_and_edge_rows_the_body_renders() {
+        // f.txt lines 2, 15 and 28 changed, three diff context lines
+        // around each: the first hunk touches the file start, the last
+        // the file end, and the 6-line gaps split 3/3 between neighbours.
+        let dir = std::env::temp_dir().join(format!("adhdiff-outline-ctx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let changed = [2, 15, 28];
+        let text: String = (1..=30)
+            .map(|i| {
+                if changed.contains(&i) {
+                    format!("LINE {i}\n")
+                } else {
+                    format!("line {i}\n")
+                }
+            })
+            .collect();
+        std::fs::write(dir.join("f.txt"), text).unwrap();
+        let mut diff = String::from("diff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n");
+        for c in changed {
+            let (lo, hi) = ((c - 3).max(1), (c + 3).min(30));
+            diff += &format!("@@ -{lo},{n} +{lo},{n} @@\n", n = hi - lo + 1);
+            for i in lo..=hi {
+                if i == c {
+                    diff += &format!("-line {i}\n+LINE {i}\n");
+                } else {
+                    diff += &format!(" line {i}\n");
+                }
+            }
+        }
+        let files = crate::diff::parse_unified(diff.as_bytes()).unwrap();
+        let hunks = files[0]
+            .hunks
+            .iter()
+            .map(|raw| LabeledHunk {
+                file: "f.txt".into(),
+                row_start: raw.row_start,
+                row_end: raw.row_end,
+                priority: Priority::P2,
+                label: "l".into(),
+                rationale: "r".into(),
+                mechanical: false,
+                confidence: Default::default(),
+                supports: None,
+            })
+            .collect();
+        let mut g = Inner {
+            map: AdhDiffMap {
+                title: "t".into(),
+                summary: "s".into(),
+                hunks,
+                diff_sha256: String::new(),
+            },
+            files,
+            comments: Default::default(),
+            viewed: Default::default(),
+            state_path: "/tmp/unused.json".into(),
+            diff_sha: "0".repeat(16),
+            workdir_hint: Some(dir.clone()),
+            editor: None,
+            body_cache: Default::default(),
+            context: 5,
+        };
+        let payload = map_payload(&g);
+        let counts: Vec<(u32, u32)> = payload
+            .hunks
+            .iter()
+            .map(|h| (h.extra_rows, h.edge_rows))
+            .collect();
+        assert_eq!(counts, vec![(3, 1), (6, 0), (3, 1)]);
+        for h in &payload.hunks {
+            let html = hunk_body(&mut g, h.map_idx, h.idx).unwrap().body_html;
+            let rendered = (
+                html.matches(r#"class="ctx-extra""#).count() as u32,
+                html.matches(r#"class="ctx-edge""#).count() as u32,
+            );
+            assert_eq!(rendered, (h.extra_rows, h.edge_rows), "{html}");
+        }
+
+        g.context = 0;
+        assert!(
+            map_payload(&g)
+                .hunks
+                .iter()
+                .all(|h| (h.extra_rows, h.edge_rows) == (0, 0))
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

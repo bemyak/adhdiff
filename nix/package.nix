@@ -1,14 +1,12 @@
 {
   lib,
   craneLib,
-  rustPlatform,
-  fetchCrate,
   fetchurl,
   runCommand,
-  buildWasmBindgenCli,
   pkg-config,
   trunk,
   binaryen,
+  wasm-bindgen-cli,
   llvmPackages,
   webkitgtk_4_1,
   libsoup_3,
@@ -27,8 +25,10 @@ let
   cargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
   tslpVersion = lib.findFirst (p: p.name == "tree-sitter-language-pack") null cargoLockParsed.package;
 in
-assert lib.assertMsg (tslpVersion != null && tslpVersion.version == "1.22.1")
-  "nix/package.nix: parser-sources URL pins 1.22.1 but Cargo.lock has ${tslpVersion.version or "missing"} — update both";
+assert lib.assertMsg (tslpVersion != null && tslpVersion.version == "1.23.1")
+  "nix/package.nix: parser-sources URL pins 1.23.1 but Cargo.lock has ${
+    tslpVersion.version or "missing"
+  } — update both";
 let
   # The grammar sources are compiled in statically, but the crate's build
   # script downloads them from GitHub releases, which the sandbox forbids.
@@ -36,32 +36,15 @@ let
   # build insists on a .sha256 sidecar next to the URL, so lay both out in
   # one directory.
   tslpParserSources = fetchurl {
-    url = "https://github.com/xberg-io/tree-sitter-language-pack/releases/download/v1.22.1/parser-sources-1.22.1.tar.zst";
-    hash = "sha256-Ln++rEbKXPtoXFPNipK7YGonJLEk0oxax9BO+akT11Y=";
+    url = "https://github.com/xberg-io/tree-sitter-language-pack/releases/download/v1.23.1/parser-sources-1.23.1.tar.zst";
+    hash = "sha256-Xgzn2Ys/H/8bWX0X8d2ylzqJo7tHL5r3+ULgEHIpNA8=";
   };
-  tslpBundleDir = runCommand "tslp-parser-sources-1.22.1" { } ''
+  tslpBundleDir = runCommand "tslp-parser-sources-1.23.1" { } ''
     mkdir $out
-    ln -s ${tslpParserSources} $out/parser-sources-1.22.1.tar.zst
+    ln -s ${tslpParserSources} $out/parser-sources-1.23.1.tar.zst
     cd $out
-    sha256sum parser-sources-1.22.1.tar.zst | cut -d' ' -f1 | tr -d '\n' > parser-sources-1.22.1.tar.zst.sha256
+    sha256sum parser-sources-1.23.1.tar.zst | cut -d' ' -f1 | tr -d '\n' > parser-sources-1.23.1.tar.zst.sha256
   '';
-
-  # Cargo.lock pins wasm-bindgen 0.2.129 and trunk requires the
-  # wasm-bindgen CLI to match the lockfile version exactly, while pinned
-  # nixpkgs only ships up to 0.2.127 — build the exact CLI from crates.io.
-  wasm-bindgen-cli = buildWasmBindgenCli rec {
-    src = fetchCrate {
-      pname = "wasm-bindgen-cli";
-      version = "0.2.129";
-      hash = "sha256-pcecKQd7E8Opw6bkFoE569epUi7gh5qpQF1e5PJY6V8=";
-    };
-
-    cargoDeps = rustPlatform.fetchCargoVendor {
-      inherit src;
-      inherit (src) pname version;
-      hash = "sha256-vmUrWVU7kPJJxO5qIVeAkwQyWDELO1Z4Z5gitz2kco8=";
-    };
-  };
 
   root = ../.;
   src = lib.fileset.toSource {
@@ -116,7 +99,7 @@ let
     # the deps stage too; both stages need the same env to share artifacts.
     env.TSLP_LINK_MODE = "static";
     env.TSLP_LANGUAGES = "rust,go,python,bash,nix,toml,javascript,typescript,markdown,markdown_inline,hcl,json,yaml,html,css,proto";
-    env.TSLP_SOURCE_BUNDLE_URL = "file://${tslpBundleDir}/parser-sources-1.22.1.tar.zst";
+    env.TSLP_SOURCE_BUNDLE_URL = "file://${tslpBundleDir}/parser-sources-1.23.1.tar.zst";
 
     # Tests run in the devShell and CI; the Nix build only ships the binary.
     doCheck = false;
