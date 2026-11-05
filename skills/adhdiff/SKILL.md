@@ -1,6 +1,6 @@
 ---
 name: adhdiff
-description: Use when the user asks you to review or annotate a code change (MR, PR, local diff). You produce the diff via the canonical VCS commands below and drive the adhdiff CLI to validate, enrich, and render a priority-tiered AdhDiffMap.
+description: Use only when the user asks you to review or annotate a diff — an MR, a PR, a revision range, or uncommitted local changes. Do not use for reviewing files, modules, a codebase, or a design that is not a diff. You produce the diff via the canonical VCS commands below and drive the adhdiff CLI to validate, enrich, and render a priority-tiered AdhDiffMap.
 ---
 
 # adhdiff review workflow
